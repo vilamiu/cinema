@@ -21,7 +21,7 @@ function authed(url) {
   return headers;
 }
 
-export async function api(path, params = {}, { fresh = false } = {}) {
+export async function api(path, params = {}, { fresh = false, low = false } = {}) {
   const url = new URL(BASE + path);
   if (!('language' in params)) url.searchParams.set('language', 'en-US');
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
@@ -37,7 +37,7 @@ export async function api(path, params = {}, { fresh = false } = {}) {
       return r.json();
     }
     throw new Error('TMDB is rate-limiting; try again in a moment');
-  });
+  }, low);
   mem.set(cacheKey, p);
   p.catch(() => mem.delete(cacheKey));
   return p;
@@ -55,7 +55,7 @@ export function details(type, id) {
 export function person(id) { return api(`/person/${id}`, { append_to_response: 'movie_credits,tv_credits,external_ids' }); }
 export function search(q, page = 1) { return api('/search/multi', { query: q, include_adult: 'false', page }); }
 export function searchPeople(q) { return api('/search/person', { query: q, include_adult: 'false' }); }
-export function find(imdb) { return api(`/find/${imdb}`, { external_source: 'imdb_id' }); }
+export function find(imdb, opts) { return api(`/find/${imdb}`, { external_source: 'imdb_id' }, opts); }
 export function countries() { return api('/configuration/countries', { language: 'en-US' }); }
 export function discover(type, params) { return api(`/discover/${type}`, { include_adult: 'false', ...params }); }
 export function keywordSearch(q) { return api('/search/keyword', { query: q }); }
@@ -99,12 +99,12 @@ export function cachePut(f) {
 }
 
 // Light details call for list items (keywords + credits are what the rules need).
-export async function getFacts(type, id) {
+export async function getFacts(type, id, opts) {
   const key = type + ':' + id;
   const hit = cacheGet(key);
   if (hit) return hit;
   const append = type === 'movie' ? 'credits,keywords' : 'credits,keywords,external_ids';
-  const d = await api(`/${type}/${id}`, { append_to_response: append });
+  const d = await api(`/${type}/${id}`, { append_to_response: append }, opts);
   const f = factsFrom(d, type);
   cachePut(f);
   return f;

@@ -117,12 +117,12 @@ export function syncProfile(onProgress = () => {}) {
     try {
       await Promise.all(todo.map(async (e) => {
         try {
-          const r = await find(e.imdb);
+          const r = await find(e.imdb, { low: true });
           const hit = (e.type === 'tv' ? (r.tv_results[0] || r.movie_results[0]) : (r.movie_results[0] || r.tv_results[0]));
           if (!hit) sync[e.imdb] = { miss: true };
           else {
             const type = hit.media_type || (r.movie_results.includes(hit) ? 'movie' : 'tv');
-            const f = await getFacts(type, hit.id);
+            const f = await getFacts(type, hit.id, { low: true });
             sync[e.imdb] = { type, id: hit.id, poster: f.poster, countries: f.countries, directors: f.directors.slice(0, 2), cast: f.cast.slice(0, 6) };
           }
         } catch (err) {

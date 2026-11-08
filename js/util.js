@@ -31,16 +31,16 @@ function append(el, kids) {
   }
 }
 
-// Run async tasks with a concurrency cap.
+// Run async tasks with a concurrency cap. Background tasks (low = true) only start when nothing urgent is waiting.
 export function limiter(max) {
-  let active = 0; const queue = [];
+  let active = 0; const high = [], low = [];
   const next = () => {
-    if (active >= max || !queue.length) return;
+    if (active >= max || !(high.length || low.length)) return;
     active++;
-    const { fn, res, rej } = queue.shift();
+    const { fn, res, rej } = (high.length ? high : low).shift();
     fn().then(res, rej).finally(() => { active--; next(); });
   };
-  return (fn) => new Promise((res, rej) => { queue.push({ fn, res, rej }); next(); });
+  return (fn, isLow = false) => new Promise((res, rej) => { (isLow ? low : high).push({ fn, res, rej }); next(); });
 }
 
 export function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }

@@ -302,18 +302,19 @@ async function homeView(live) {
   trailPush('Home', 'home');
 
   if (canPromise) {
-    const vis = await topPromising(18, 260, live);
+    const vis = await topPromising(18, 260, live, (part) => { if (part.length) promWrap.replaceChildren(...part.slice(0, 18).map(card), part.length < 18 ? loading('') : null); });
     if (!vis) return;
     promWrap.replaceChildren(...(vis.length ? vis.slice(0, 18).map(card) : [h('p.empty', 'Nothing in your taste list passes your rules yet.')]));
   }
 }
 
 // The best-predicted titles that pass the rules (walks the taste list; results are cached per browser).
-async function topPromising(want, cap, live) {
+async function topPromising(want, cap, live, onUpdate) {
   const st = { next: 0 }; const got = [];
   while (got.filter(x => !x.ev.hide.length).length < want && !st.done && (st.examined || 0) < cap) {
-    got.push(...await walkTaste(st, { want, maxExamine: 60 }));
+    got.push(...await walkTaste(st, { want, maxExamine: 24 }));
     if (!live()) return null;
+    if (onUpdate) onUpdate(got.filter(x => !x.ev.hide.length).sort(byPromise));
   }
   return got.filter(x => !x.ev.hide.length).sort(byPromise);
 }
