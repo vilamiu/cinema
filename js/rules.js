@@ -49,6 +49,7 @@ export const MONKEY_FIXED = ['Peter Jackson', 'Hayao Miyazaki', 'Spike Jonze', '
   'Takeshi Kitano', 'Milos Forman'];
 
 // ---------- Region and keyword vocabularies ----------
+const INDIAN_LANGS = new Set(['hi', 'ta', 'te', 'ml', 'kn', 'mr']);
 const MIDEAST = new Set(['IR', 'IQ', 'SY', 'LB', 'JO', 'IL', 'PS', 'SA', 'YE', 'OM', 'AE', 'QA', 'BH', 'KW', 'EG', 'LY', 'TN', 'DZ', 'MA', 'SD', 'TR']);
 const MIDEAST_KW = /\b(middle east|middle eastern|arab|arabian|arabs|lebanon|lebanese|beirut|syria|syrian|damascus|aleppo|iraq|iraqi|baghdad|gulf war|persian gulf|iran|iranian|tehran|egypt|egyptian|cairo|alexandria, egypt|israel|israeli|palestine|palestinian|gaza|jerusalem|west bank|saudi arabia|yemen|kuwait|dubai|qatar|oman|libya|libyan|tunisia|algeria|algerian|algiers|morocco|moroccan|marrakech|tangier|casablanca, morocco|sudan|north africa|bedouin)\b/;
 const JORDAN_KW = /(^jordan$|, jordan$)/;
@@ -70,6 +71,7 @@ export const HARD_RULES = [
   { id: 'verdict', label: 'Marked "not for me"', note: 'Titles you dismissed in this app.' },
   { id: 'dns', label: 'Do-not-suggest list', note: 'Titles withdrawn or flagged, including the animal-suffering never list.' },
   { id: 'iran', label: 'Iranian films', note: 'Iran in production countries, or Persian-language.' },
+  { id: 'india', label: 'Indian films', note: 'India in the production countries, or an original language mainly from India (Hindi, Tamil, Telugu, Malayalam, Kannada, Marathi). Added 2026-11-08.' },
   { id: 'spain', label: 'Spanish films', note: 'Spain anywhere in the production countries (2026-10-24).' },
   { id: 'mideast', label: 'Middle East and North Africa', note: 'Produced there, or keywords place it there. Setting counts, not just production.' },
   { id: 'superhero', label: 'Superhero, Marvel or DC', note: 'Superhero keywords or Marvel/DC studios.' },
@@ -138,6 +140,7 @@ export function evaluate(f, profile, verdicts, off = new Set(), ctx = {}) {
 
   if (on('iran') && (C.has('IR') || f.lang === 'fa')) hide.push({ id: 'iran', text: 'Iranian film' });
   if (on('spain') && C.has('ES')) hide.push({ id: 'spain', text: 'Spain in the production credits' });
+  if (on('india') && (C.has('IN') || INDIAN_LANGS.has(f.lang))) hide.push({ id: 'india', text: C.has('IN') ? 'Indian film' : 'Indian-language film' });
 
   if (on('mideast')) {
     const prod = [...C].filter(c => MIDEAST.has(c) && c !== 'IR');
@@ -191,6 +194,6 @@ export function evaluate(f, profile, verdicts, off = new Set(), ctx = {}) {
 export function summarizeHidden(evals) {
   const counts = new Map();
   for (const e of evals) for (const h of e.hide.slice(0, 1)) counts.set(h.id, (counts.get(h.id) || 0) + 1);
-  const label = { rated: 'rated', verdict: 'not for me', dns: 'do-not-suggest', iran: 'Iranian', spain: 'Spanish', mideast: 'Middle East', superhero: 'superhero', uscomedy: 'US comedy', horror: 'horror', depp: 'Depp', crowe: 'Crowe', cancelled: 'cancelled', veto: 'your data' };
+  const label = { rated: 'rated', verdict: 'not for me', dns: 'do-not-suggest', iran: 'Iranian', india: 'Indian', spain: 'Spanish', mideast: 'Middle East', superhero: 'superhero', uscomedy: 'US comedy', horror: 'horror', depp: 'Depp', crowe: 'Crowe', cancelled: 'cancelled', veto: 'your data' };
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([id, n]) => `${n} ${label[id] || id}`).join(' · ');
 }
