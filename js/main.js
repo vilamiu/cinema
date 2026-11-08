@@ -12,6 +12,28 @@ const view = document.getElementById('view');
 let navToken = 0;
 
 // ---------------- helpers ----------------
+// Copy "Title, Year" to the clipboard (falls back to a hidden textarea where the Clipboard API is unavailable).
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch { /* fall through */ }
+  const ta = h('textarea', { style: { position: 'fixed', top: '-1000px', opacity: '0' }, readonly: true }, text);
+  document.body.append(ta); ta.select();
+  let ok = false; try { ok = document.execCommand('copy'); } catch { ok = false; }
+  ta.remove();
+  return ok;
+}
+function copyTitleButton(text) {
+  const label = h('span', 'Copy');
+  const btn = h('button.copybtn', { type: 'button', title: `Copy “${text}”`, 'aria-label': `Copy ${text}` }, icons.copy(), label);
+  btn.addEventListener('click', async () => {
+    const ok = await copyText(text);
+    toast(ok ? `Copied: ${text}` : 'Copy failed: long-press the title instead');
+    if (!ok) return;
+    btn.classList.add('done'); btn.replaceChildren(icons.check(), h('span', 'Copied'));
+    setTimeout(() => { btn.classList.remove('done'); btn.replaceChildren(icons.copy(), label); }, 1600);
+  });
+  return btn;
+}
+
 function toast(msg) {
   document.querySelector('.toast')?.remove();
   const t = h('div.toast', { role: 'status' }, msg);
@@ -446,7 +468,8 @@ async function titleView(type, id, live) {
         h('div.scores',
           f.vote ? h('div.score', { title: `TMDB rating from ${f.votes.toLocaleString()} votes` }, h('span.v', f.vote.toFixed(1)), h('span.k.plain', fmtVotes(f.votes))) : null,
           ev.rated?.imdbRating ? h('div.score', h('span.v', ev.rated.imdbRating.toFixed(1)), h('span.k', 'IMDb')) : null,
-          mine ? h('div.score.mine', h('span.v', String(mine)), h('span.k', 'You')) : null))));
+          mine ? h('div.score.mine', h('span.v', String(mine)), h('span.k', 'You')) : null,
+          copyTitleButton(f.year ? `${f.title}, ${f.year}` : f.title)))));
 
   // verdict / your rules
   const vbox = h('div.panel.verdict');

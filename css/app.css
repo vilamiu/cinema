@@ -245,6 +245,14 @@ a.chip:hover { color: var(--light); border-color: var(--faint); }
 .score .v { font-family: var(--display); font-weight: 800; font-size: 30px; line-height: 1; }
 .score .k { font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--faint); }
 .score.mine .v { color: var(--bulb); }
+.copybtn {
+  align-self: center; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px;
+  border-radius: 999px; border: 1px solid var(--line); background: var(--stage-2); color: var(--dim);
+  font: 600 13px/1 var(--body); cursor: pointer;
+}
+.copybtn svg { width: 15px; height: 15px; }
+.copybtn:hover { color: var(--light); border-color: var(--faint); }
+.copybtn.done { color: var(--bulb); border-color: var(--bulb); }
 .score .k.plain { text-transform: none; letter-spacing: .02em; font-size: 12px; }
 .title-body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 28px; align-items: start; }
 @media (max-width: 900px) { .title-body { grid-template-columns: minmax(0, 1fr); } }
