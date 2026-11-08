@@ -9,6 +9,8 @@ import { card, ResultList, personCard, posterBox, trailerBox, loading, icons, ti
 import { loadTaste, tasteData, tasteOf, tier, promiseKey, resolveImdb } from './taste.js';
 
 const view = document.getElementById('view');
+// Replace the page content; null/false children are skipped (the DOM would print them as text).
+const show = (...kids) => view.replaceChildren(...kids.flat(Infinity).filter(k => k != null && k !== false));
 let navToken = 0;
 
 // ---------------- helpers ----------------
@@ -119,7 +121,7 @@ function updatePendingBadge() {
   if (!a) return;
   a.querySelector('.pend')?.remove();
   const n = pendingImdb().length;
-  if (n) a.append(h('span.pend', { title: `${n} score${n > 1 ? 's' : ''} not on IMDb yet` }, String(n)));
+
 }
 
 // ---------------- trail (every place visited this session, tappable) ----------------
@@ -188,11 +190,11 @@ function keyPanel(message) {
 
 function renderError(e) {
   if (e instanceof AuthError) {
-    view.replaceChildren(keyPanel(hasKey() ? 'TMDB rejected the saved key. Paste it again or make a new one.' : null));
+    show(keyPanel(hasKey() ? 'TMDB rejected the saved key. Paste it again or make a new one.' : null));
     return;
   }
   console.error(e);
-  view.replaceChildren(h('section.panel',
+  show(h('section.panel',
     h('h2.sec', 'Something went wrong'),
     h('p.err', e.message || String(e)),
     h('p.note', 'Usually a network hiccup or TMDB rate limit.'),
@@ -206,11 +208,11 @@ async function route() {
   const { path, q } = parseHash();
   closeSuggest();
   document.querySelectorAll('[data-nav]').forEach(a => a.classList.toggle('on', path === '/' + a.dataset.nav));
-  view.replaceChildren(loading());
+  show(loading());
   window.scrollTo(0, 0);
   const needsKey = !['/', '/saved', '/settings', '/seeds'].includes(path);
   try {
-    if (needsKey && !hasKey()) { view.replaceChildren(keyPanel()); return; }
+    if (needsKey && !hasKey()) { show(keyPanel()); return; }
     let m;
     if (path === '/') await homeView(live);
     else if ((m = path.match(/^\/(movie|tv)\/(\d+)$/))) await titleView(m[1], +m[2], live);
@@ -226,7 +228,7 @@ async function route() {
     else if (path === '/films') await filmsView(live);
     else if (path === '/saved') await savedView(q, live);
     else if (path === '/settings') await settingsView(live);
-    else view.replaceChildren(h('p.empty', 'That page does not exist.'), h('a.btn', { href: '#/' }, 'Home'));
+    else show(h('p.empty', 'That page does not exist.'), h('a.btn', { href: '#/' }, 'Home'));
   } catch (e) {
     if (live()) renderError(e);
   }
@@ -292,7 +294,7 @@ async function homeView(live) {
     h('a', { href: '#/settings', style: { color: 'var(--bulb)' } }, 'Rules and data')));
 
   if (!live()) return;
-  view.replaceChildren(...kids);
+  show(...kids);
   trailPush('Home', 'home');
 
   if (canPromise) {
@@ -371,7 +373,7 @@ async function peopleView(q, live) {
   const yours = peopleFromRatings(role).filter(g => g.n >= 2 && g.avg >= 7.5).sort((a, b) => b.n8 - a.n8 || b.avg - a.avg).slice(0, 24);
   const yoursGrid = h('div.grid.people', yours.map(g => personCard(g, `avg ${g.avg.toFixed(1)} · ${g.n} rated`, as)));
   const newWrap = h('div.section', loading('Reading your most promising films (first time takes a moment)'));
-  view.replaceChildren(
+  show(
     h('h1.h-display', title),
     inlineSearch({ placeholder: role === 'director' ? 'Search a director' : 'Search an actor', mode: role }),
     section('New to you', null, h('p.note', role === 'director'
@@ -411,7 +413,7 @@ async function filmsView(live) {
   const prof = getProfile();
   const favs = prof.entries.filter(e => e.rating >= 9).sort((a, b) => b.rating - a.rating || String(b.date).localeCompare(String(a.date))).slice(0, 20);
   const promWrap = h('div.section', loading('Finding your best bets'));
-  view.replaceChildren(
+  show(
     h('h1.h-display', 'Films'),
     inlineSearch({ placeholder: 'Search a film or series', mode: 'film' }),
     section('Most promising for you', null, h('p.note', 'Ranked by people whose ratings look like yours, then checked against your rules.'), promWrap,
@@ -431,7 +433,7 @@ async function imdbJump(tt, live) {
   if (!live()) return;
   const hit = r.movie_results[0] ? ['movie', r.movie_results[0]] : r.tv_results[0] ? ['tv', r.tv_results[0]] : null;
   if (!hit) {
-    view.replaceChildren(h('section.panel', h('h2.sec', 'Not on TMDB'), h('p.note', `TMDB has no match for ${tt}.`), h('a.btn', { href: `https://www.imdb.com/title/${tt}/`, target: '_blank', rel: 'noopener' }, 'Open on IMDb', icons.ext())));
+    show(h('section.panel', h('h2.sec', 'Not on TMDB'), h('p.note', `TMDB has no match for ${tt}.`), h('a.btn', { href: `https://www.imdb.com/title/${tt}/`, target: '_blank', rel: 'noopener' }, 'Open on IMDb', icons.ext())));
     return;
   }
   location.replace(`#/${hit[0]}/${hit[1].id}`);
@@ -560,7 +562,7 @@ async function titleView(type, id, live) {
   const recWrap = h('div.section');
   const more = section('More like this', null, recWrap);
   if (!live()) return;
-  view.replaceChildren(hero, scorebox, h('div.title-body', main, side), more);
+  show(hero, scorebox, h('div.title-body', main, side), more);
   trailPush(f.title, type);
 
   // recommendations (TMDB recommendations + similar), checked against the rules
@@ -662,7 +664,7 @@ async function personView(id, q, live) {
   };
 
   if (!live()) return;
-  view.replaceChildren(head, h('section.section',
+  show(head, h('section.section',
     h('header', h('h2.sec', 'Filmography', countEl), h('div.controls', tabs, sortSel, obsc)),
     listWrap, moreBtn));
   trailPush(p.name, 'person');
@@ -802,7 +804,7 @@ async function discoverView(q, live) {
   moreBtn.onclick = () => loadMore().catch(renderError);
 
   if (!live()) return;
-  view.replaceChildren(h('section.section',
+  show(h('section.section',
     h('h1.h-display', heading),
     statText ? h('div.mono.dim', statText) : null,
     controls),
@@ -821,7 +823,7 @@ async function searchView(q, live) {
   const s = (q.get('q') || '').trim();
   const mode = q.get('mode') || '';
   document.title = (s ? `“${s}”` : 'Search') + ' · Cinema';
-  if (!s) { view.replaceChildren(h('p.empty', 'Type in the search bar above.')); focusSearch(mode); return; }
+  if (!s) { show(h('p.empty', 'Type in the search bar above.')); focusSearch(mode); return; }
   const [r1, r2] = await Promise.all([tmdb.search(s, 1), tmdb.search(s, 2).catch(() => ({ results: [] }))]);
   if (!live()) return;
   const all = [...r1.results, ...(r2.results || [])];
@@ -837,7 +839,7 @@ async function searchView(q, live) {
   const titleSec = section('Films and series', titles.length, h('p.note', 'Search shows everything; titles your rules would hide are greyed with the reason.'), list.el);
   if (mode === 'film') kids.push(titleSec, peopleSec); else kids.push(peopleSec, titleSec);
   if (!people.length && !titles.length) kids.push(h('p.empty', 'Nothing found. Check the spelling, or try the original title.'));
-  view.replaceChildren(...kids.filter(Boolean));
+  show(...kids.filter(Boolean));
   trailPush(`“${s}”`, 'search');
   list.emptyEl.textContent = 'Checking…';
   list.add(await check(titles.slice(0, 30), 'movie'));
@@ -865,7 +867,7 @@ async function countriesView(live) {
     const t = norm(e.target.value);
     view.querySelectorAll('.pick').forEach(a => { a.hidden = t && !a.dataset.name.includes(t); });
   } });
-  view.replaceChildren(h('h1.h-display', 'Countries'), filter,
+  show(h('h1.h-display', 'Countries'), filter,
     section('In your ratings', mine.length, h('div.picklist', mine.map(g => pick(g.key.slice(2), countryName(g.key.slice(2)), g)))),
     section('Everywhere else', null, h('p.note', 'Iran, Spain and the Middle East stay listed, but your rules hide what they make.'), allList));
   trailPush('Countries', 'pick');
@@ -882,7 +884,7 @@ async function genresView(q, live) {
     if (!items.length) return null;
     return { n: items.length, n8: items.filter(e => e.rating >= 8).length };
   };
-  view.replaceChildren(h('h1.h-display', 'Genres'),
+  show(h('h1.h-display', 'Genres'),
     h('div.seg', [['movie', 'Films'], ['tv', 'Series']].map(([v, l]) => h('button' + (type === v ? '.on' : ''), { type: 'button', onclick: () => go('/genres', { type: v }) }, l))),
     h('div.picklist', list.map(([id, name]) => h('a.pick', { href: `#/discover?type=${type}&genre=${id}` }, h('span.p-n', name), statFor(stats(id))))));
   trailPush('Genres', 'pick');
@@ -892,7 +894,7 @@ async function decadesView(q, live) {
   document.title = 'Decades · Cinema';
   const prof = getProfile();
   const stats = (d) => { const it = prof.entries.filter(e => e.year >= d && e.year < d + 10); return it.length ? { n: it.length, n8: it.filter(e => e.rating >= 8).length } : null; };
-  view.replaceChildren(h('h1.h-display', 'Decades'),
+  show(h('h1.h-display', 'Decades'),
     h('div.picklist', DECADES.map(d => h('a.pick', { href: `#/discover?decade=${d}` }, h('span.p-n', d + 's'), statFor(stats(d))))));
   trailPush('Decades', 'pick');
 }
@@ -902,7 +904,7 @@ async function seedsView(q, live) {
   const min = +(q.get('min') || 9);
   const prof = getProfile();
   const list = prof.entries.filter(e => e.rating >= min).sort((a, b) => b.rating - a.rating || String(b.date).localeCompare(String(a.date)));
-  view.replaceChildren(
+  show(
     h('h1.h-display', 'Start from a favourite'),
     h('p.lede', 'Open any of these to see what TMDB connects it to, filtered by your rules.'),
     h('div.seg', [[10, '10s'], [9, '9 and up'], [8, '8 and up']].map(([v, l]) => h('button' + (min === v ? '.on' : ''), { type: 'button', onclick: () => go('/seeds', { min: v }) }, l))),
@@ -946,14 +948,14 @@ async function savedView(q, live) {
     const a = h('a', { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })), download: 'cinema-verdicts.csv' });
     document.body.append(a); a.click(); a.remove();
   };
-  view.replaceChildren(
+  show(...[
     h('h1.h-display', 'Your list'),
-    h('div.controls', h('div.seg', tabs.map(([v, l]) => h('button' + (tab === v ? '.on' : ''), { type: 'button', onclick: () => go('/saved', { tab: v }) }, `${l} ${by(v).length}`))),
+    h('div.controls', h('div.seg', tabs.map(([v, l]) => h('button' + (tab === v ? '.on' : ''), { type: 'button', onclick: () => go('/saved', { tab: v }) }, l))),
       all.length ? h('button.btn.small', { type: 'button', onclick: copy }, 'Copy for Claude') : null,
       all.length ? h('button.btn.small', { type: 'button', onclick: download }, 'Download CSV') : null),
     tab === 'seen' && pend.length ? h('p.note', `${pend.length} score${pend.length > 1 ? 's are' : ' is'} not on IMDb yet. "Rate" opens the film in IMDb (its app, if installed): tap Rate there, pick the same score, then tap Done here.`) : null,
     items.length ? h('div.saved-list', items.map(row)) : h('p.empty', tab === 'watchlist' ? 'Nothing saved yet. Tap "Want to watch" on any film.' : tab === 'seen' ? 'Tap a score on any film page to log it here.' : 'Titles you dismiss land here, so you can undo.'),
-    h('p.note', 'Saved in this browser. "Copy for Claude" gives a log you can paste into a chat to keep the recommender skill in sync.'));
+    h('p.note', 'Saved in this browser. "Copy for Claude" gives a log you can paste into a chat to keep the recommender skill in sync.')].filter(Boolean));
   trailPush('Your list', 'saved');
 }
 
@@ -1013,7 +1015,7 @@ async function settingsView(live) {
     h('p.note', 'Flags (never hide): psychological horror, possible animal harm, dystopia sermons, pre-2010 effects, post-2015 US/UK, weak lanes in your data, and "more from a director you already love".'));
 
   if (!live()) return;
-  view.replaceChildren(h('h1.h-display', 'Settings'), h('div.settings-grid', keyBox, dataBox, rulesBox, viewBox));
+  show(h('h1.h-display', 'Settings'), h('div.settings-grid', keyBox, dataBox, rulesBox, viewBox));
   trailPush('Settings', 'settings');
 }
 
@@ -1083,7 +1085,7 @@ document.addEventListener('keydown', (e) => {
 // ---------------- boot ----------------
 window.addEventListener('hashchange', route);
 (async () => {
-  view.replaceChildren(loading('Loading your ratings'));
+  show(loading('Loading your ratings'));
   await Promise.all([loadProfile(), loadTaste()]);
   onProfile(() => {
     const { path } = parseHash();

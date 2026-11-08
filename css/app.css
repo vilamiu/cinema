@@ -301,7 +301,6 @@ a.chip:hover { color: var(--light); border-color: var(--faint); }
 .btn.imdb { background: #f5c518; color: #121212; border-color: #f5c518; }
 .pendbar { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; border-color: var(--bulb); padding-block: 12px; }
 .navlinks a { position: relative; }
-.pend { position: absolute; top: 2px; right: 0; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--bulb); color: var(--bulb-ink); font: 600 11px/17px var(--mono); text-align: center; }
 
 /* ---------- Person ---------- */
 .p-head { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 26px; align-items: start; }
