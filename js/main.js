@@ -21,17 +21,19 @@ async function copyText(text) {
   ta.remove();
   return ok;
 }
-function copyTitleButton(text) {
-  const label = h('span', 'Copy');
-  const btn = h('button.copybtn', { type: 'button', title: `Copy “${text}”`, 'aria-label': `Copy ${text}` }, icons.copy(), label);
-  btn.addEventListener('click', async () => {
+// The page title itself copies "Title, Year" when tapped (or Enter/Space when focused).
+function copyableTitle(title, text) {
+  const el = h('h1.copytitle', { role: 'button', tabindex: '0', title: `Tap to copy “${text}”`, 'aria-label': `${title}. Copy “${text}”` }, title);
+  const go = async () => {
     const ok = await copyText(text);
     toast(ok ? `Copied: ${text}` : 'Copy failed: long-press the title instead');
     if (!ok) return;
-    btn.classList.add('done'); btn.replaceChildren(icons.check(), h('span', 'Copied'));
-    setTimeout(() => { btn.classList.remove('done'); btn.replaceChildren(icons.copy(), label); }, 1600);
-  });
-  return btn;
+    el.classList.add('done');
+    setTimeout(() => el.classList.remove('done'), 900);
+  };
+  el.addEventListener('click', go);
+  el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+  return el;
 }
 
 function toast(msg) {
@@ -456,7 +458,7 @@ async function titleView(type, id, live) {
       posterBox(d.poster_path, f.title, 'w500'),
       h('div',
         d.tagline ? h('div.tagline', d.tagline) : null,
-        h('h1', f.title),
+        copyableTitle(f.title, f.year ? `${f.title}, ${f.year}` : f.title),
         f.orig && f.orig !== f.title ? h('div.orig', f.orig) : null,
         h('div.meta',
           type === 'tv' ? h('span', 'Series') : null,
@@ -468,8 +470,7 @@ async function titleView(type, id, live) {
         h('div.scores',
           f.vote ? h('div.score', { title: `TMDB rating from ${f.votes.toLocaleString()} votes` }, h('span.v', f.vote.toFixed(1)), h('span.k.plain', fmtVotes(f.votes))) : null,
           ev.rated?.imdbRating ? h('div.score', h('span.v', ev.rated.imdbRating.toFixed(1)), h('span.k', 'IMDb')) : null,
-          mine ? h('div.score.mine', h('span.v', String(mine)), h('span.k', 'You')) : null,
-          copyTitleButton(f.year ? `${f.title}, ${f.year}` : f.title)))));
+          mine ? h('div.score.mine', h('span.v', String(mine)), h('span.k', 'You')) : null))));
 
   // verdict / your rules
   const vbox = h('div.panel.verdict');
