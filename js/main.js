@@ -1,4 +1,4 @@
-// Reel Atlas: router, views, header search, trail.
+// Cinema: router, views, header search, trail.
 import { h, debounce, fmtRuntime, fmtVotes, countryName, demonym, genreName, DECADES, MOVIE_GENRES, TV_GENRES, norm } from './util.js';
 import { store, verdicts, setVerdict, settings, setSettings, rulesOff, setRuleOff } from './store.js';
 import * as tmdb from './tmdb.js';
@@ -172,7 +172,7 @@ function seedCard(e) {
 }
 
 async function homeView(live) {
-  document.title = 'Reel Atlas';
+  document.title = 'Cinema';
   const prof = getProfile();
   const kids = [];
   if (!hasKey()) kids.push(keyPanel());
@@ -233,7 +233,7 @@ async function titleView(type, id, live) {
   tmdb.cachePut(f);
   const prof = getProfile();
   let ev = evaluate(f, prof, verdicts(), rulesOff());
-  document.title = `${f.title}${f.year ? ' (' + f.year + ')' : ''} · Reel Atlas`;
+  document.title = `${f.title}${f.year ? ' (' + f.year + ')' : ''} · Cinema`;
 
   const dec = f.year ? Math.floor(f.year / 10) * 10 : null;
   const writers = (d.credits?.crew || []).filter(c => ['Screenplay', 'Writer', 'Novel', 'Story'].includes(c.job));
@@ -335,7 +335,7 @@ async function titleView(type, id, live) {
 async function personView(id, q, live) {
   const p = await tmdb.person(id);
   if (!live()) return;
-  document.title = `${p.name} · Reel Atlas`;
+  document.title = `${p.name} · Cinema`;
   const notSelf = (c) => !/\b(self|himself|herself|themselves|narrator \(voice\)|archive footage)\b/i.test(c.character || '') && !(c.genre_ids || []).includes(99);
   const movie = (x) => ({ ...x, media_type: 'movie' });
   const tv = (x) => ({ ...x, media_type: 'tv' });
@@ -440,7 +440,7 @@ async function discoverView(q, live) {
 
   const titleParts = [country && demonym(country), genre && genreName(+genre), decade && decade + 's', kwname && `“${kwname}”`].filter(Boolean);
   const heading = (titleParts.join(' ') || 'Everything') + (type === 'tv' ? ' series' : ' films');
-  document.title = heading + ' · Reel Atlas';
+  document.title = heading + ' · Cinema';
 
   const countries = await allCountries();
   if (!live()) return;
@@ -513,7 +513,7 @@ async function discoverView(q, live) {
 async function searchView(q, live) {
   const s = (q.get('q') || '').trim();
   const mode = q.get('mode') || '';
-  document.title = (s ? `“${s}”` : 'Search') + ' · Reel Atlas';
+  document.title = (s ? `“${s}”` : 'Search') + ' · Cinema';
   if (!s) { view.replaceChildren(h('p.empty', 'Type in the search bar above.')); focusSearch(mode); return; }
   const [r1, r2] = await Promise.all([tmdb.search(s, 1), tmdb.search(s, 2).catch(() => ({ results: [] }))]);
   if (!live()) return;
@@ -546,7 +546,7 @@ function statFor(g) {
 }
 
 async function countriesView(live) {
-  document.title = 'Countries · Reel Atlas';
+  document.title = 'Countries · Cinema';
   const countries = await allCountries();
   if (!live()) return;
   const prof = getProfile();
@@ -565,7 +565,7 @@ async function countriesView(live) {
 }
 
 async function genresView(q, live) {
-  document.title = 'Genres · Reel Atlas';
+  document.title = 'Genres · Cinema';
   const type = q.get('type') === 'tv' ? 'tv' : 'movie';
   const prof = getProfile();
   const list = type === 'tv' ? TV_GENRES : MOVIE_GENRES;
@@ -582,7 +582,7 @@ async function genresView(q, live) {
 }
 
 async function decadesView(q, live) {
-  document.title = 'Decades · Reel Atlas';
+  document.title = 'Decades · Cinema';
   const prof = getProfile();
   const stats = (d) => { const it = prof.entries.filter(e => e.year >= d && e.year < d + 10); return it.length ? { n: it.length, n8: it.filter(e => e.rating >= 8).length } : null; };
   view.replaceChildren(h('h1.h-display', 'Decades'),
@@ -591,7 +591,7 @@ async function decadesView(q, live) {
 }
 
 async function seedsView(q, live) {
-  document.title = 'Your favourites · Reel Atlas';
+  document.title = 'Your favourites · Cinema';
   const min = +(q.get('min') || 9);
   const prof = getProfile();
   const list = prof.entries.filter(e => e.rating >= min).sort((a, b) => b.rating - a.rating || String(b.date).localeCompare(String(a.date)));
@@ -605,7 +605,7 @@ async function seedsView(q, live) {
 
 // ---------------- Saved list ----------------
 async function savedView(q, live) {
-  document.title = 'Your list · Reel Atlas';
+  document.title = 'Your list · Cinema';
   const tab = q.get('tab') || 'watchlist';
   const all = Object.values(verdicts()).sort((a, b) => String(b.at).localeCompare(String(a.at)));
   const by = (s) => all.filter(x => x.status === s);
@@ -616,7 +616,7 @@ async function savedView(q, live) {
     h('div', h('a.t', { href: `#/${x.type}/${x.id}` }, x.title), h('div.m', [x.year, x.status === 'seen' && x.rating ? `you: ${x.rating}/10` : null, x.at?.slice(0, 10)].filter(Boolean).join(' · '))),
     h('button.btn.small.ghost', { type: 'button', onclick: () => { setVerdict(x, { status: null }); route(); } }, 'Remove'));
 
-  const exportText = () => ['Reel Atlas verdicts, exported ' + new Date().toISOString().slice(0, 10),
+  const exportText = () => ['Cinema verdicts, exported ' + new Date().toISOString().slice(0, 10),
     ...all.map(x => `${(x.at || '').slice(0, 10)} | ${x.title} (${x.year || '?'})${x.imdb ? ' ' + x.imdb : ''} | ${x.status === 'seen' ? 'seen' + (x.rating ? ' ' + x.rating + '/10' : '') : x.status === 'notforme' ? 'not for me' : 'to watch'}`)].join('\n');
   const copy = async () => {
     const text = exportText();
@@ -625,7 +625,7 @@ async function savedView(q, live) {
   };
   const download = () => {
     const csv = ['date,title,year,imdb,tmdb_type,tmdb_id,status,rating', ...all.map(x => [(x.at || '').slice(0, 10), `"${(x.title || '').replace(/"/g, '""')}"`, x.year || '', x.imdb || '', x.type, x.id, x.status, x.rating || ''].join(','))].join('\n');
-    const a = h('a', { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })), download: 'reel-atlas-verdicts.csv' });
+    const a = h('a', { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })), download: 'cinema-verdicts.csv' });
     document.body.append(a); a.click(); a.remove();
   };
   view.replaceChildren(
@@ -654,7 +654,7 @@ function startSync() {
 }
 
 async function settingsView(live) {
-  document.title = 'Settings · Reel Atlas';
+  document.title = 'Settings · Cinema';
   const prof = getProfile();
   const s = settings();
   const off = rulesOff();

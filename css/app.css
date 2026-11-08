@@ -1,4 +1,4 @@
-/* Reel Atlas — a projection-booth palette: warm black stage, projector-light text, marquee-bulb amber.
+/* Cinema — a projection-booth palette: warm black stage, projector-light text, marquee-bulb amber.
    Layout: sticky header + film-strip trail, then one content column (max 1200px) of rails and poster grids. */
 :root {
   --ink: #0f0e11;

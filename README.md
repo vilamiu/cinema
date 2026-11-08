@@ -1,8 +1,8 @@
-# Reel Atlas
+# Cinema
 
 A personal film explorer. Start from an actor, director, film, country, genre or decade, then jump between connected titles. Every list is checked against my own rules and ratings before it shows up.
 
-**Live:** https://vilamiu.github.io/reel-atlas/
+**Live:** https://vilamiu.github.io/cinema/
 
 ## What it does
 

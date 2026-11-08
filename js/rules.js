@@ -1,4 +1,4 @@
-// Reel Atlas rule engine.
+// Cinema rule engine.
 // The hard rules and lists come from the movie-recommender skill (rules as of 2026-10-24).
 // A "hide" rule removes a title from every list (a toggle can reveal it, with the reason).
 // A "flag" only adds a warning badge.
