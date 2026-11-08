@@ -7,7 +7,7 @@ import { evaluate, HARD_RULES, imdbGenres } from './rules.js';
 import { loadProfile, getProfile, onProfile, personRatings, syncProfile, isSyncing, importRatings, resetImport, rebuildProfile } from './profile.js';
 import { card, ResultList, personCard, posterBox, trailerBox, loading, icons, titleHref } from './components.js';
 import { loadTaste, tasteData, tasteOf, tier, promiseKey, resolveImdb } from './taste.js';
-import { ensureSignedIn, isAdmin, signOut } from './auth.js';
+import { ensureSignedIn, isAdmin, signOut, currentUser } from './auth.js';
 import { onRemoteChange, publishKey, cloudOn } from './cloud.js';
 
 const view = document.getElementById('view');
@@ -39,6 +39,14 @@ function copyableTitle(title, text) {
   el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
   return el;
 }
+
+// Who put a film on the shared "to watch" list: first name and role of the person signed in.
+function addedBy() {
+  const u = currentUser();
+  if (!u) return { by: null, byRole: null };
+  return { by: (u.name || '').split(/\s+/)[0] || (u.role === 'admin' ? 'Admin' : 'Guest'), byRole: u.role };
+}
+const byTag = (x) => x?.by ? h('span.bytag' + (x.byRole === 'viewer' ? '.viewer' : ''), x.by) : null;
 
 function toast(msg) {
   document.querySelector('.toast')?.remove();
@@ -280,7 +288,7 @@ async function homeView(live) {
   if (v.length) {
     kids.push(section('Your list', `${v.length}`, h('div.rail', v.slice(0, 20).map(x => {
       const p = posterBox(x.poster, x.title);
-      return h('a.card', { href: `#/${x.type}/${x.id}` }, p, h('div.t', x.title), h('div.m', h('span', String(x.year || ''))));
+      return h('a.card', { href: `#/${x.type}/${x.id}` }, p, h('div.t', x.title), h('div.m', h('span', String(x.year || '')), byTag(x)));
     }))));
   }
 
@@ -512,7 +520,7 @@ async function titleView(type, id, live) {
       const on = v?.status === 'watchlist';
       scorebox.className = 'watchbox';
       if (v && !on) { scorebox.replaceChildren(h('span.mono.dim', v.status === 'seen' ? (v.rating ? `Seen · ${v.rating}/10` : 'Seen') : 'Not for us')); return; }
-      scorebox.replaceChildren(h('button.btn' + (on ? '.on' : '.primary'), { type: 'button', onclick: () => { setVerdict(f, { status: on ? null : 'watchlist' }); toast(on ? 'Removed from your list' : 'Added to your list'); drawScore(); } },
+      scorebox.replaceChildren(h('button.btn' + (on ? '.on' : '.primary'), { type: 'button', onclick: () => { setVerdict(f, on ? { status: null } : { status: 'watchlist', ...addedBy() }); toast(on ? 'Removed from your list' : 'Added to your list'); drawScore(); } },
         on ? icons.check() : icons.plus(), on ? 'On your list' : 'Want to watch'));
       return;
     }
@@ -541,7 +549,7 @@ async function titleView(type, id, live) {
     }
     const w = verdicts()[f.type + ':' + f.id];
     const acts = h('div.actions',
-      appScore ? null : h('button.btn' + (w?.status === 'watchlist' ? '.on' : ''), { type: 'button', onclick: () => { const on = w?.status === 'watchlist'; setVerdict(f, { status: on ? null : 'watchlist' }); toast(on ? 'Removed from your list' : 'Added to your list'); drawVerdict(); } },
+      appScore ? null : h('button.btn' + (w?.status === 'watchlist' ? '.on' : ''), { type: 'button', onclick: () => { const on = w?.status === 'watchlist'; setVerdict(f, on ? { status: null } : { status: 'watchlist', ...addedBy() }); toast(on ? 'Removed from your list' : 'Added to your list'); drawVerdict(); } },
         w?.status === 'watchlist' ? icons.check() : icons.plus(), w?.status === 'watchlist' ? 'On your list' : 'Want to watch'),
       appScore ? null : h('button.btn.danger' + (w?.status === 'notforme' ? '.on' : ''), { type: 'button', onclick: () => { const on = w?.status === 'notforme'; setVerdict(f, { status: on ? null : 'notforme' }); toast(on ? 'Undone' : 'Hidden from now on'); drawVerdict(); } },
         icons.x(), w?.status === 'notforme' ? 'Not for me (undo)' : 'Not for me'),
@@ -947,6 +955,7 @@ async function savedView(q, live) {
       h('a', { href: `#/${x.type}/${x.id}` }, posterBox(x.poster, x.title, 'w185')),
       h('div', h('a.t', { href: `#/${x.type}/${x.id}` }, x.title),
         h('div.m', [x.year, x.status === 'seen' && x.rating ? `you: ${x.rating}/10` : null, x.at?.slice(0, 10)].filter(Boolean).join(' · ')),
+        x.status === 'watchlist' && x.by ? h('div.m', byTag(x)) : null,
         x.status === 'seen' && x.rating ? h('div.m', pending ? h('span', { style: { color: 'var(--bulb)' } }, 'Not on IMDb yet') : 'On IMDb') : null),
       h('div.row',
         pending ? h('a.btn.small.imdb', { href: imdbHref(x), target: '_blank', rel: 'noopener', onclick: () => setVerdict(x, { imdbOpened: true }) }, `Rate ${x.rating}`) : null,

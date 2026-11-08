@@ -375,3 +375,8 @@ body.locked .top, body.locked #view, body.locked footer.site { display: none !im
 .gate-msg.err { color: var(--veto); }
 body.viewer [data-nav="settings"] { display: none; }
 .watchbox { display: flex; }
+
+/* who added a film to the shared list */
+.bytag { display: inline-block; font: 600 11px/1.6 var(--body); letter-spacing: .02em; padding: 0 8px; border-radius: 999px;
+  color: var(--bulb-ink); background: var(--bulb); }
+.bytag.viewer { background: var(--flag); color: var(--ink); }
