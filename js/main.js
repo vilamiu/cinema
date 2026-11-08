@@ -463,7 +463,7 @@ async function titleView(type, id, live) {
   const hero = h('section.hero',
     d.backdrop_path ? h('div.backdrop', h('img', { src: img(d.backdrop_path, 'w1280'), alt: '' })) : null,
     h('div.hero-title',
-      copyableTitle(f.title, f.year ? `${f.title}, ${f.year}` : f.title),
+      copyableTitle(f.title, f.year ? `${f.title} ${f.year}` : f.title),
       f.orig && f.orig !== f.title ? h('div.orig', f.orig) : null),
     h('div.hero-grid',
       posterBox(d.poster_path, f.title, 'w500'),
