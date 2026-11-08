@@ -5,6 +5,7 @@
 // the email with PBKDF2), so it can only be unlocked by signing in as one of them.
 import { store } from './store.js';
 import { h } from './util.js';
+import { initCloud, cloudSignedIn, cloudSignIn, cloudSignOut, startCloud } from './cloud.js';
 
 const SESSION_DAYS = 60;
 let session = null;
@@ -48,8 +49,9 @@ function applyRole() {
   if (out) out.hidden = !session;
 }
 
-export function signOut() {
+export async function signOut() {
   store.del('session');
+  await cloudSignOut();
   try { window.google?.accounts?.id?.disableAutoSelect(); } catch { /* ignore */ }
   location.replace(location.pathname);
 }
@@ -59,10 +61,14 @@ export async function ensureSignedIn() {
   let access;
   try { access = await (await fetch('data/access.json', { cache: 'no-cache' })).json(); } catch { access = null; }
   if (!access?.googleClientId || !access.users?.length) { session = null; applyRole(); return; }
+  let cloud = false;
+  try { cloud = await initCloud(); } catch (e) { console.warn('shared list unavailable', e); }
 
   const saved = store.get('session');
-  if (saved && saved.exp > Date.now() && access.users.some(u => u.id === saved.id && u.role === saved.role)) {
-    session = saved; applyRole(); return;
+  if (saved && saved.exp > Date.now() && access.users.some(u => u.id === saved.id && u.role === saved.role) && (!cloud || cloudSignedIn())) {
+    session = saved; applyRole();
+    if (cloud) await startCloud(session.role).catch(e => console.warn('sync', e));
+    return;
   }
   store.del('session');
 
@@ -87,6 +93,11 @@ export async function ensureSignedIn() {
         if (!user) { msg.textContent = `${claims.email} doesn't have access.`; msg.classList.add('err'); try { google.accounts.id.disableAutoSelect(); } catch { /* ignore */ } return; }
         if (user.key && (!store.get('tmdbKey') || user.role !== 'admin')) {
           try { store.set('tmdbKey', await unlockKey(claims.email, access.salt, user.key)); } catch { /* admin can still paste one */ }
+        }
+        if (cloud) {
+          msg.textContent = 'Opening the shared list…';
+          try { await cloudSignIn(credential); await startCloud(user.role); }
+          catch (e) { console.warn('shared list sign-in failed', e); msg.textContent = 'Signed in, but the shared list refused the connection (' + (e.code || e.message) + ').'; msg.classList.add('err'); return; }
         }
         session = { id, role: user.role, name: claims.given_name || claims.name || '', exp: Date.now() + SESSION_DAYS * 864e5 };
         store.set('session', session);

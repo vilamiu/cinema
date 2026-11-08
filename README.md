@@ -19,6 +19,10 @@ A personal film explorer. Start from an actor, director, film, country, genre or
 
 `data/access.json` (built with `node tools/access.mjs --client-id … --user admin:… --user viewer:…`) turns on a Google sign-in screen. Emails are stored only as salted hashes; no TMDB key is stored in the repo, so each device pastes one once. Admin: everything. Viewer: browse and keep a personal "Want to watch" list; no scores, no "Not for me", no Settings. It is a client-side gate: on GitHub Pages the code and data files remain publicly readable. Without `data/access.json` the gate is off.
 
+## Shared list
+
+With `data/firebase.json` (the Firebase web config, public by design) the list of verdicts lives in Firestore and is shared by everyone who can sign in; the TMDB token is kept in `shared/config` so viewers never paste one. Sign-in reuses the Google ID token from the gate. `firebase/firestore.rules` (fill in the two emails, paste into Firestore → Rules) lets only the two accounts read, the admin write anything, and the viewer only add or remove "Want to watch" entries. Without `data/firebase.json` everything stays in the browser.
+
 ## Setup
 
 The site needs a free TMDB key (Settings → API on themoviedb.org). Paste it on first visit; it is stored only in that browser.

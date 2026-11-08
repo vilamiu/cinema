@@ -22,7 +22,12 @@ export const store = {
 };
 
 // ---- Verdicts: watchlist / seen / not for me, keyed "movie:123" ----
+// Kept in localStorage; when the shared database is on, cloud.js mirrors every write and replaces the local copy
+// with the shared one whenever it changes.
+let writeHook = null;
+export function onVerdictWrite(fn) { writeHook = fn; }
 export function verdicts() { return store.get('verdicts', {}); }
+export function replaceVerdicts(all) { store.set('verdicts', all); }
 export function setVerdict(f, patch) {
   const all = verdicts();
   const key = f.type + ':' + f.id;
@@ -30,6 +35,7 @@ export function setVerdict(f, patch) {
   const next = { ...prev, ...patch, title: f.title, year: f.year, imdb: f.imdb || prev.imdb || null, poster: f.poster || prev.poster || null, type: f.type, id: f.id, at: new Date().toISOString() };
   if (next.status == null) delete all[key]; else all[key] = next;
   store.set('verdicts', all);
+  if (writeHook) writeHook(key, all[key] || null);
   return all;
 }
 

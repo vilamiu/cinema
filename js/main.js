@@ -8,6 +8,7 @@ import { loadProfile, getProfile, onProfile, personRatings, syncProfile, isSynci
 import { card, ResultList, personCard, posterBox, trailerBox, loading, icons, titleHref } from './components.js';
 import { loadTaste, tasteData, tasteOf, tier, promiseKey, resolveImdb } from './taste.js';
 import { ensureSignedIn, isAdmin, signOut } from './auth.js';
+import { onRemoteChange, publishKey, cloudOn } from './cloud.js';
 
 const view = document.getElementById('view');
 // Replace the page content; null/false children are skipped (the DOM would print them as text).
@@ -118,6 +119,7 @@ function pendingImdb() {
   return list.filter(x => !onImdb.includes(x));
 }
 function updatePendingBadge() {
+  if (!isAdmin()) return;
   const a = document.querySelector('[data-nav="saved"]');
   if (!a) return;
   a.querySelector('.pend')?.remove();
@@ -157,6 +159,7 @@ function keyForm() {
       await tmdb.api('/configuration', {}, { fresh: true });
       status.textContent = '';
       toast('Key works. Matching your ratings in the background.');
+      publishKey(k);
       startSync();
       route();
     } catch (e) {
@@ -505,9 +508,10 @@ async function titleView(type, id, live) {
   const drawScore = () => {
     const v = verdicts()[f.type + ':' + f.id];
     if (!isAdmin()) {
-      // viewers: only "Want to watch" (their own list on their device)
+      // viewers: only "Want to watch" on the shared list
       const on = v?.status === 'watchlist';
       scorebox.className = 'watchbox';
+      if (v && !on) { scorebox.replaceChildren(h('span.mono.dim', v.status === 'seen' ? (v.rating ? `Seen · ${v.rating}/10` : 'Seen') : 'Not for us')); return; }
       scorebox.replaceChildren(h('button.btn' + (on ? '.on' : '.primary'), { type: 'button', onclick: () => { setVerdict(f, { status: on ? null : 'watchlist' }); toast(on ? 'Removed from your list' : 'Added to your list'); drawScore(); } },
         on ? icons.check() : icons.plus(), on ? 'On your list' : 'Want to watch'));
       return;
@@ -970,7 +974,7 @@ async function savedView(q, live) {
       all.length ? h('button.btn.small', { type: 'button', onclick: download }, 'Download CSV') : null) : null,
     tab === 'seen' && pend.length ? h('p.note', `${pend.length} score${pend.length > 1 ? 's are' : ' is'} not on IMDb yet. "Rate" opens the film in IMDb (its app, if installed): tap Rate there, pick the same score, then tap Done here.`) : null,
     items.length ? h('div.saved-list', items.map(row)) : h('p.empty', tab === 'watchlist' ? 'Nothing saved yet. Tap "Want to watch" on any film.' : tab === 'seen' ? 'Tap a score on any film page to log it here.' : 'Titles you dismiss land here, so you can undo.'),
-    h('p.note', isAdmin() ? 'Saved in this browser. "Copy for Claude" gives a log you can paste into a chat to keep the recommender skill in sync.' : 'Saved on this device.')].filter(Boolean));
+    h('p.note', (cloudOn() ? 'Shared between everyone who can sign in.' : 'Saved in this browser.') + (isAdmin() ? ' "Copy for Claude" gives a log you can paste into a chat to keep the recommender skill in sync.' : ''))].filter(Boolean));
   crumbs(['Your list', null]);
 }
 
@@ -1102,6 +1106,11 @@ window.addEventListener('hashchange', route);
 document.getElementById('signOut')?.addEventListener('click', (e) => { e.preventDefault(); signOut(); });
 (async () => {
   await ensureSignedIn();
+  onRemoteChange(() => {
+    rebuildProfile();
+    const { path } = parseHash();
+    if (path === '/saved' || path === '/') route();
+  });
   show(loading('Loading your ratings'));
   await Promise.all([loadProfile(), loadTaste()]);
   onProfile(() => {
