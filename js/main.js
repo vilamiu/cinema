@@ -4,7 +4,7 @@ import { store, verdicts, setVerdict, settings, setSettings, rulesOff, setRuleOf
 import * as tmdb from './tmdb.js';
 import { AuthError, hasKey, img } from './tmdb.js';
 import { evaluate, HARD_RULES, imdbGenres } from './rules.js';
-import { loadProfile, getProfile, onProfile, personRatings, syncProfile, isSyncing, importRatings, resetImport } from './profile.js';
+import { loadProfile, getProfile, onProfile, personRatings, syncProfile, isSyncing, importRatings, resetImport, rebuildProfile } from './profile.js';
 import { card, ResultList, personCard, posterBox, trailerBox, loading, icons, titleHref } from './components.js';
 import { loadTaste, tasteData, tasteOf, tier, promiseKey, resolveImdb } from './taste.js';
 
@@ -79,6 +79,16 @@ function parseHash() {
 function go(path, params) {
   const qs = params ? new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString() : '';
   location.hash = '#' + path + (qs ? '?' + qs : '');
+}
+
+// ---------------- scores waiting to be added on IMDb ----------------
+function pendingImdb() { return Object.values(verdicts()).filter(x => x.status === 'seen' && x.rating && !x.imdbDone); }
+function updatePendingBadge() {
+  const a = document.querySelector('[data-nav="saved"]');
+  if (!a) return;
+  a.querySelector('.pend')?.remove();
+  const n = pendingImdb().length;
+  if (n) a.append(h('span.pend', { title: `${n} score${n > 1 ? 's' : ''} not on IMDb yet` }, String(n)));
 }
 
 // ---------------- trail (every place visited this session, tappable) ----------------
@@ -187,7 +197,7 @@ async function route() {
   } catch (e) {
     if (live()) renderError(e);
   }
-  if (live()) renderTrail();
+  if (live()) { renderTrail(); updatePendingBadge(); }
 }
 
 // ---------------- Home ----------------
@@ -208,6 +218,8 @@ async function homeView(live) {
   const kids = [];
   if (!hasKey()) kids.push(keyPanel());
   const nCountries = [...prof.groups.keys()].filter(k => k.startsWith('c:')).length;
+  const pend = pendingImdb();
+  if (pend.length) kids.push(h('a.panel.pendbar', { href: '#/saved?tab=seen' }, h('b', `${pend.length} score${pend.length > 1 ? 's' : ''} not on IMDb yet`), h('span.note', 'Finish them in Your list')));
   const canPromise = hasKey() && tasteData()?.total;
   const promWrap = h('div.rail', loading('Finding your best bets'));
   if (canPromise) {
@@ -311,7 +323,6 @@ async function titleView(type, id, live) {
 
   // verdict / your rules
   const vbox = h('div.panel.verdict');
-  const actions = h('div.actions');
   const drawVerdict = () => {
     ev = evaluate(f, getProfile(), verdicts(), rulesOff());
     const items = [];
@@ -336,17 +347,45 @@ async function titleView(type, id, live) {
       f.imdb ? h('a', { href: `https://www.imdb.com/title/${f.imdb}/`, target: '_blank', rel: 'noopener' }, 'IMDb page (HD trailer)') : null));
     vbox.replaceChildren(...items);
 
-    const v = ev.verdict;
-    const sel = h('select', { 'aria-label': 'Your rating', onchange: (e) => { setVerdict(f, { status: 'seen', rating: +e.target.value || null }); toast(e.target.value ? `Saved: seen, ${e.target.value}/10` : 'Saved: seen'); drawVerdict(); } },
-      h('option', { value: '' }, v?.status === 'seen' ? 'Seen · rate' : 'Seen it · rate'),
-      [10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(n => h('option', { value: n, selected: v?.status === 'seen' && v.rating === n }, `${n}/10`)));
-    actions.replaceChildren(...[
-      h('button.btn' + (v?.status === 'watchlist' ? '.on' : '.primary'), { type: 'button', onclick: () => { setVerdict(f, { status: v?.status === 'watchlist' ? null : 'watchlist' }); toast(v?.status === 'watchlist' ? 'Removed from your list' : 'Added to your list'); drawVerdict(); } },
-        v?.status === 'watchlist' ? icons.check() : icons.plus(), v?.status === 'watchlist' ? 'On your list' : 'Add to list'),
-      sel,
-      h('button.btn.danger' + (v?.status === 'notforme' ? '.on' : ''), { type: 'button', onclick: () => { setVerdict(f, { status: v?.status === 'notforme' ? null : 'notforme' }); toast(v?.status === 'notforme' ? 'Undone' : 'Hidden from now on'); drawVerdict(); } },
-        icons.x(), v?.status === 'notforme' ? 'Not for me (undo)' : 'Not for me'),
-      v?.status === 'seen' ? h('button.btn.ghost.small', { type: 'button', onclick: () => { setVerdict(f, { status: null }); drawVerdict(); } }, 'Clear seen') : null].filter(Boolean));
+    drawScore();
+  };
+
+  // Your score: one tap saves it here; IMDb takes it via one more tap in its app or site.
+  const scorebox = h('section.panel.scorebox');
+  const imdbUrl = f.imdb ? `https://www.imdb.com/title/${f.imdb}/` : `https://www.imdb.com/find/?q=${encodeURIComponent(f.title + ' ' + (f.year || ''))}`;
+  const drawScore = () => {
+    const v = verdicts()[f.type + ':' + f.id];
+    const appScore = v?.status === 'seen' ? v.rating : null;
+    const current = appScore ?? ev.rated?.rating ?? null;
+    const pick = (n) => {
+      setVerdict(f, { status: 'seen', rating: n, imdbDone: false, imdbOpened: false });
+      rebuildProfile();
+      toast(`Saved ${n}/10`);
+      drawVerdict();
+      updatePendingBadge();
+    };
+    const head = current
+      ? h('div.sb-head', h('span.sb-title', 'Your score'), h('span.sb-cur', `${current}/10`),
+        appScore ? h('span.mono.dim', v.imdbDone ? 'on IMDb' : 'saved here') : h('span.mono.dim', `on IMDb${ev.rated?.date ? ' since ' + ev.rated.date : ''}`))
+      : h('div.sb-head', h('span.sb-title', 'Seen it? Tap your score'));
+    const nums = h('div.sb-nums', { role: 'group', 'aria-label': 'Your score out of 10' },
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => h('button.sc' + (current === n ? '.on' : ''), { type: 'button', 'aria-pressed': String(current === n), onclick: () => pick(n) }, String(n))));
+    let step = null;
+    if (appScore && !v.imdbDone) {
+      step = h('div.imdbstep',
+        h('div', h('b', `Add ${appScore}/10 to IMDb`), h('div.note', v.imdbOpened ? 'Tap Rate on the IMDb page, pick ' + appScore + ', then come back and confirm.' : 'IMDb only accepts ratings from its own app or site: this opens the film there.')),
+        h('div.row',
+          h('a.btn.imdb', { href: imdbUrl, target: '_blank', rel: 'noopener', onclick: () => { setVerdict(f, { imdbOpened: true }); setTimeout(drawScore, 400); } }, `Rate ${appScore} on IMDb`, icons.ext()),
+          h('button.btn' + (v.imdbOpened ? '.primary' : ''), { type: 'button', onclick: () => { setVerdict(f, { imdbDone: true }); toast('Marked as on IMDb'); drawScore(); updatePendingBadge(); } }, icons.check(), "It's on IMDb")));
+    }
+    const w = verdicts()[f.type + ':' + f.id];
+    const acts = h('div.actions',
+      appScore ? null : h('button.btn' + (w?.status === 'watchlist' ? '.on' : ''), { type: 'button', onclick: () => { const on = w?.status === 'watchlist'; setVerdict(f, { status: on ? null : 'watchlist' }); toast(on ? 'Removed from your list' : 'Added to your list'); drawVerdict(); } },
+        w?.status === 'watchlist' ? icons.check() : icons.plus(), w?.status === 'watchlist' ? 'On your list' : 'Want to watch'),
+      appScore ? null : h('button.btn.danger' + (w?.status === 'notforme' ? '.on' : ''), { type: 'button', onclick: () => { const on = w?.status === 'notforme'; setVerdict(f, { status: on ? null : 'notforme' }); toast(on ? 'Undone' : 'Hidden from now on'); drawVerdict(); } },
+        icons.x(), w?.status === 'notforme' ? 'Not for me (undo)' : 'Not for me'),
+      appScore ? h('button.btn.ghost.small', { type: 'button', onclick: () => { setVerdict(f, { status: null }); rebuildProfile(); drawVerdict(); updatePendingBadge(); } }, 'Remove my score') : null);
+    scorebox.replaceChildren(...[head, nums, step, acts].filter(Boolean));
   };
   drawVerdict();
 
@@ -365,12 +404,12 @@ async function titleView(type, id, live) {
     d.overview ? h('p.overview', d.overview) : null,
     people.length ? section('Cast', null, h('div.rail', people.map(p => personCard(p, p.character || p.roles?.[0]?.character)))) : null,
     kw.length ? section('Keywords', null, h('div.row', kw.map(k => h('a.chip.kw', { href: `#/discover?type=${type}&keyword=${k.id}&kwname=${encodeURIComponent(k.name)}` }, k.name)))) : null);
-  const side = h('div.title-side', actions, vbox, facts);
+  const side = h('div.title-side', vbox, facts);
 
   const recWrap = h('div.section');
   const more = section('More like this', null, recWrap);
   if (!live()) return;
-  view.replaceChildren(hero, h('div.title-body', main, side), more);
+  view.replaceChildren(hero, scorebox, h('div.title-body', main, side), more);
   trailPush(f.title, type);
 
   // recommendations (TMDB recommendations + similar), checked against the rules
@@ -691,15 +730,26 @@ async function savedView(q, live) {
   const tab = q.get('tab') || 'watchlist';
   const all = Object.values(verdicts()).sort((a, b) => String(b.at).localeCompare(String(a.at)));
   const by = (s) => all.filter(x => x.status === s);
-  const tabs = [['watchlist', 'To watch'], ['seen', 'Seen here'], ['notforme', 'Not for me']];
-  const items = by(tab);
-  const row = (x) => h('div.saved-item',
-    h('a', { href: `#/${x.type}/${x.id}` }, posterBox(x.poster, x.title, 'w185')),
-    h('div', h('a.t', { href: `#/${x.type}/${x.id}` }, x.title), h('div.m', [x.year, x.status === 'seen' && x.rating ? `you: ${x.rating}/10` : null, x.at?.slice(0, 10)].filter(Boolean).join(' · '))),
-    h('button.btn.small.ghost', { type: 'button', onclick: () => { setVerdict(x, { status: null }); route(); } }, 'Remove'));
+  const tabs = [['watchlist', 'To watch'], ['seen', 'Scored here'], ['notforme', 'Not for me']];
+  const pendingFirst = (a, b) => (!!a.imdbDone - !!b.imdbDone) || String(b.at).localeCompare(String(a.at));
+  const items = tab === 'seen' ? by('seen').sort(pendingFirst) : by(tab);
+  const imdbHref = (x) => x.imdb ? `https://www.imdb.com/title/${x.imdb}/` : `https://www.imdb.com/find/?q=${encodeURIComponent(x.title + ' ' + (x.year || ''))}`;
+  const row = (x) => {
+    const pending = x.status === 'seen' && x.rating && !x.imdbDone;
+    return h('div.saved-item' + (pending ? '.pending' : ''),
+      h('a', { href: `#/${x.type}/${x.id}` }, posterBox(x.poster, x.title, 'w185')),
+      h('div', h('a.t', { href: `#/${x.type}/${x.id}` }, x.title),
+        h('div.m', [x.year, x.status === 'seen' && x.rating ? `you: ${x.rating}/10` : null, x.at?.slice(0, 10)].filter(Boolean).join(' · ')),
+        x.status === 'seen' && x.rating ? h('div.m', pending ? h('span', { style: { color: 'var(--bulb)' } }, 'Not on IMDb yet') : 'On IMDb') : null),
+      h('div.row',
+        pending ? h('a.btn.small.imdb', { href: imdbHref(x), target: '_blank', rel: 'noopener', onclick: () => setVerdict(x, { imdbOpened: true }) }, `Rate ${x.rating}`) : null,
+        pending ? h('button.btn.small', { type: 'button', onclick: () => { setVerdict(x, { imdbDone: true }); toast('Marked as on IMDb'); route(); } }, 'Done') : null,
+        h('button.btn.small.ghost', { type: 'button', onclick: () => { setVerdict(x, { status: null }); rebuildProfile(); route(); } }, 'Remove')));
+  };
+  const pend = pendingImdb();
 
   const exportText = () => ['Cinema verdicts, exported ' + new Date().toISOString().slice(0, 10),
-    ...all.map(x => `${(x.at || '').slice(0, 10)} | ${x.title} (${x.year || '?'})${x.imdb ? ' ' + x.imdb : ''} | ${x.status === 'seen' ? 'seen' + (x.rating ? ' ' + x.rating + '/10' : '') : x.status === 'notforme' ? 'not for me' : 'to watch'}`)].join('\n');
+    ...all.map(x => `${(x.at || '').slice(0, 10)} | ${x.title} (${x.year || '?'})${x.imdb ? ' ' + x.imdb : ''} | ${x.status === 'seen' ? 'seen' + (x.rating ? ' ' + x.rating + '/10' + (x.imdbDone ? ', on IMDb' : ', not on IMDb yet') : '') : x.status === 'notforme' ? 'not for me' : 'to watch'}`)].join('\n');
   const copy = async () => {
     const text = exportText();
     try { await navigator.clipboard.writeText(text); toast('Copied. Paste it to Claude to update the recommender log.'); }
@@ -715,7 +765,8 @@ async function savedView(q, live) {
     h('div.controls', h('div.seg', tabs.map(([v, l]) => h('button' + (tab === v ? '.on' : ''), { type: 'button', onclick: () => go('/saved', { tab: v }) }, `${l} ${by(v).length}`))),
       all.length ? h('button.btn.small', { type: 'button', onclick: copy }, 'Copy for Claude') : null,
       all.length ? h('button.btn.small', { type: 'button', onclick: download }, 'Download CSV') : null),
-    items.length ? h('div.saved-list', items.map(row)) : h('p.empty', tab === 'watchlist' ? 'Nothing saved yet. Tap "Add to list" on any film.' : tab === 'seen' ? 'Rate a film from its page to log it here.' : 'Titles you dismiss land here, so you can undo.'),
+    tab === 'seen' && pend.length ? h('p.note', `${pend.length} score${pend.length > 1 ? 's are' : ' is'} not on IMDb yet. "Rate" opens the film in IMDb (its app, if installed): tap Rate there, pick the same score, then tap Done here.`) : null,
+    items.length ? h('div.saved-list', items.map(row)) : h('p.empty', tab === 'watchlist' ? 'Nothing saved yet. Tap "Want to watch" on any film.' : tab === 'seen' ? 'Tap a score on any film page to log it here.' : 'Titles you dismiss land here, so you can undo.'),
     h('p.note', 'Saved in this browser. "Copy for Claude" gives a log you can paste into a chat to keep the recommender skill in sync.'));
   trailPush('Your list', 'saved');
 }
@@ -850,7 +901,7 @@ window.addEventListener('hashchange', route);
   await Promise.all([loadProfile(), loadTaste()]);
   onProfile(() => {
     const { path } = parseHash();
-    if (['/', '/seeds', '/settings'].includes(path)) route();
+    if (['/', '/seeds', '/settings'].includes(path) && !isSyncing()) route();
   });
   route();
   startSync();

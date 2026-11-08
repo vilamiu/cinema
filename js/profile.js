@@ -2,7 +2,7 @@
 import { store } from './store.js';
 import { norm, countryName, demonym } from './util.js';
 import { find, getFacts, AuthError } from './tmdb.js';
-import { MONKEY_FIXED } from './rules.js';
+import { MONKEY_FIXED, imdbGenres } from './rules.js';
 
 let profile = null;
 let baseData = { source: 'none', ratings: [] };
@@ -38,6 +38,20 @@ function build(base) {
     };
   });
 
+  // Scores given in this app count straight away (newer than the export for the same title).
+  const appVerdicts = Object.values(store.get('verdicts', {})).filter(x => x.status === 'seen' && x.rating);
+  for (const x of appVerdicts) {
+    const old = x.imdb && entries.find(e => e.imdb === x.imdb);
+    if (old) { old.rating = x.rating; old.date = (x.at || '').slice(0, 10); old.fromApp = true; continue; }
+    const f = store.get('f:' + x.type + ':' + x.id);
+    entries.push({
+      imdb: x.imdb || `tmdb:${x.type}:${x.id}`, title: x.title, year: x.year, rating: x.rating, date: (x.at || '').slice(0, 10), type: x.type,
+      genres: f ? imdbGenres(f.genres || []) : [], directors: f ? f.directors.map(d => d.name) : [], leads: f ? f.cast.slice(0, 3).map(c => c.name) : [],
+      countries: f?.countries || [], synced: true, tmdbType: x.type, tmdbId: x.id, poster: x.poster,
+      directorRefs: f?.directors || [], castRefs: f?.cast || [], fromApp: true, appOnly: true,
+    });
+  }
+
   const byImdb = new Map(entries.map(e => [e.imdb, e]));
   const byTmdb = new Map(entries.filter(e => e.synced).map(e => [e.tmdbType + ':' + e.tmdbId, e]));
   const groups = new Map();
@@ -67,8 +81,14 @@ function build(base) {
     source: base.source || '', imported: !!store.get('ratingsImport'), entries, byImdb, byTmdb, groups, monkey,
     total, hitRate: total ? hits / total : 0,
     syncedCount: entries.filter(e => e.synced).length,
-    unsyncedCount: entries.filter(e => !sync[e.imdb]).length,
+    unsyncedCount: entries.filter(e => !e.appOnly && !sync[e.imdb]).length,
   };
+}
+
+export function rebuildProfile() {
+  profile = build(baseData);
+  listeners.forEach(fn => fn(profile));
+  return profile;
 }
 
 // Ratings that involve a person (as director or top-billed cast).
@@ -91,7 +111,7 @@ export function syncProfile(onProgress = () => {}) {
   if (syncing) return syncing;
   syncing = (async () => {
     const sync = store.get('sync', {});
-    const todo = profile.entries.filter(e => !sync[e.imdb]);
+    const todo = profile.entries.filter(e => !e.appOnly && !sync[e.imdb]);
     let done = 0, sinceSave = 0;
     const save = () => { store.set('sync', sync); sinceSave = 0; };
     try {
