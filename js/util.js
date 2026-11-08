@@ -74,6 +74,8 @@ export function countryName(iso) {
   if (iso === 'XC') return 'Czechoslovakia';
   if (iso === 'YU') return 'Yugoslavia';
   if (iso === 'XG') return 'East Germany';
+  if (iso === 'HK') return 'Hong Kong';
+  if (iso === 'MO') return 'Macao';
   try { regionNames ||= new Intl.DisplayNames(['en'], { type: 'region' }); return regionNames.of(iso) || iso; } catch { return iso; }
 }
 export function demonym(iso) {

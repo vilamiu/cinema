@@ -673,6 +673,7 @@ async function personView(id, q, live) {
 // ---------------- Discover (country / genre / decade / keyword) ----------------
 const SORTS = [['promising', 'Promising'], ['top', 'Top rated'], ['gems', 'Hidden gems'], ['popular', 'Popular'], ['newest', 'Newest']];
 let countryCache = null;
+const byCountryName = (a, b) => countryName(a).localeCompare(countryName(b), 'en');
 async function allCountries() {
   if (!countryCache) countryCache = (await tmdb.countries()).map(c => [c.iso_3166_1, c.english_name]).sort((a, b) => a[1].localeCompare(b[1]));
   return countryCache;
@@ -692,7 +693,7 @@ async function discoverView(q, live) {
   const countries = await allCountries();
   if (!live()) return;
   const prof = getProfile();
-  const mineC = [...prof.groups.values()].filter(g => g.key.startsWith('c:')).sort((a, b) => b.n - a.n).map(g => g.key.slice(2));
+  const mineC = [...prof.groups.values()].filter(g => g.key.startsWith('c:')).map(g => g.key.slice(2)).sort(byCountryName);
   const gList = type === 'tv' ? TV_GENRES : MOVIE_GENRES;
 
   const controls = h('div.controls',
@@ -822,7 +823,7 @@ async function countriesView(live) {
   const countries = await allCountries();
   if (!live()) return;
   const prof = getProfile();
-  const mine = [...prof.groups.values()].filter(g => g.key.startsWith('c:')).sort((a, b) => b.n - a.n);
+  const mine = [...prof.groups.values()].filter(g => g.key.startsWith('c:')).sort((a, b) => byCountryName(a.key.slice(2), b.key.slice(2)));
   const mineSet = new Set(mine.map(g => g.key.slice(2)));
   const pick = (iso, name, g) => h('a.pick', { href: `#/discover?country=${iso}`, 'data-name': norm(name) }, h('span.p-n', name), statFor(g));
   const allList = h('div.picklist', countries.filter(([c]) => !mineSet.has(c)).map(([c, n]) => pick(c, n)));
