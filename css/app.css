@@ -89,21 +89,14 @@ button, input, select { font: inherit; color: inherit; }
 .suggest .s-m { font-family: var(--mono); font-size: 11px; color: var(--dim); }
 .suggest .all { display: block; padding: 10px 12px; color: var(--bulb); font-weight: 600; border-top: 1px solid var(--line); }
 
-/* ---------- Trail (film strip) ---------- */
-.trail { position: relative; background: var(--stage); border-block: 1px solid var(--line); }
-.trail::before, .trail::after {
-  content: ""; position: absolute; left: 0; right: 0; height: 4px;
-  background: repeating-linear-gradient(90deg, var(--line) 0 9px, transparent 9px 18px);
-}
-.trail::before { top: 2px; } .trail::after { bottom: 2px; }
-.trail .wrap { display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-block: 11px; }
+/* ---------- Breadcrumbs ---------- */
+.trail { border-bottom: 1px solid var(--line); }
+.trail .wrap { display: flex; align-items: center; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-block: 8px; font-size: 13.5px; }
 .trail .wrap::-webkit-scrollbar { display: none; }
-.trail .lab { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--faint); margin-right: 4px; white-space: nowrap; }
-.trail a { flex: none; font-family: var(--mono); font-size: 12px; white-space: nowrap; color: var(--dim); padding: 2px 8px; border-radius: 4px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
-.trail a:hover { color: var(--light); background: var(--stage-2); }
-.trail a.cur { color: var(--bulb-ink); background: var(--bulb); font-weight: 600; }
-.trail .sep { flex: none; color: var(--faint); font-size: 11px; }
-.trail .clear { margin-left: auto; background: none; border: 0; color: var(--faint); font-family: var(--mono); font-size: 11px; cursor: pointer; padding: 2px 6px; white-space: nowrap; }
+.trail a { color: var(--dim); white-space: nowrap; }
+.trail a:hover { color: var(--light); text-decoration: underline; text-underline-offset: 3px; }
+.trail .cur { color: var(--light); font-weight: 600; white-space: nowrap; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; }
+.trail .sep { color: var(--faint); }
 
 /* ---------- Generic blocks ---------- */
 main { padding-block: 22px 60px; display: grid; gap: 30px; }

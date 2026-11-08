@@ -125,32 +125,22 @@ function updatePendingBadge() {
 
 }
 
-// ---------------- trail (every place visited this session, tappable) ----------------
-function trailGet() { try { return JSON.parse(sessionStorage.getItem('ra:trail') || '[]'); } catch { return []; } }
-function trailSet(t) { try { sessionStorage.setItem('ra:trail', JSON.stringify(t)); } catch { /* ignore */ } }
-function trailPush(label, kind) {
-  const hash = location.hash || '#/';
-  let t = trailGet();
-  const i = t.findIndex(x => x.hash === hash);
-  if (i >= 0) t[i].label = label; else t.push({ hash, label, kind });
-  if (t.length > 40) t = t.slice(-40);
-  trailSet(t); renderTrail();
-}
+// ---------------- breadcrumbs: the path to the current page, e.g. Home › Countries › Japan ----------------
+let crumbList = [];
+function crumbs(...items) { crumbList = items.filter(Boolean); renderTrail(); }
 function renderTrail() {
-  const t = trailGet();
   const bar = document.getElementById('trail');
   const inner = document.getElementById('trailInner');
-  bar.hidden = t.length < 2;
+  bar.hidden = !crumbList.length;
   if (bar.hidden) return;
-  const hash = location.hash || '#/';
-  const kids = [h('span.lab', 'Trail')];
-  t.forEach((x, i) => {
-    if (i) kids.push(h('span.sep', '›'));
-    kids.push(h('a' + (x.hash === hash ? '.cur' : ''), { href: x.hash, title: x.label }, x.label));
+  const all = [['Home', '#/'], ...crumbList];
+  const kids = [];
+  all.forEach(([label, href], i) => {
+    if (i) kids.push(h('span.sep', { 'aria-hidden': 'true' }, '›'));
+    kids.push(i === all.length - 1 ? h('span.cur', { 'aria-current': 'page' }, label) : h('a', { href }, label));
   });
-  kids.push(h('button.clear', { type: 'button', onclick: () => { trailSet([]); renderTrail(); } }, 'Clear'));
   inner.replaceChildren(...kids);
-  inner.querySelector('.cur')?.scrollIntoView({ block: 'nearest', inline: 'center' });
+  inner.scrollLeft = inner.scrollWidth;
 }
 
 // ---------------- TMDB key panel ----------------
@@ -299,7 +289,7 @@ async function homeView(live) {
 
   if (!live()) return;
   show(...kids);
-  trailPush('Home', 'home');
+  crumbs();
 
   if (canPromise) {
     const vis = await topPromising(18, 260, live, (part) => { if (part.length) promWrap.replaceChildren(...part.slice(0, 18).map(card), part.length < 18 ? loading('') : null); });
@@ -385,7 +375,7 @@ async function peopleView(q, live) {
       ? 'Directors behind your most promising films, none of whose work you have rated.'
       : 'Leads of your most promising films whom you have never rated.'), newWrap),
     yours.length ? section(`Your best ${title.toLowerCase()}`, `${yours.length}`, h('p.note', 'From your ratings: average 7.5 or higher across 2 or more titles.'), yoursGrid) : null);
-  trailPush(title, 'pick');
+  crumbs([title, null]);
 
   withPhotos(yours).then(ps => { if (live()) yoursGrid.replaceChildren(...ps.map(g => personCard(g, `avg ${g.avg.toFixed(1)} · ${g.n} rated`, as))); });
 
@@ -424,7 +414,7 @@ async function filmsView(live) {
     section('Most promising for you', null, h('p.note', 'Ranked by people whose ratings look like yours, then checked against your rules.'), promWrap,
       h('div.row', h('a.btn.small', { href: '#/discover?sort=promising' }, 'Narrow by genre, country or decade'))),
     favs.length ? section('Start from one you loved', null, h('div.rail', favs.map(seedCard)), h('div.row', h('a.btn.small', { href: '#/seeds?min=9' }, 'All your 9s and 10s'))) : null);
-  trailPush('Films', 'pick');
+  crumbs(['Films', null]);
   if (!tasteData()?.total) { promWrap.replaceChildren(h('p.empty', 'No taste data loaded.')); return; }
   const top = await topPromising(24, 300, live);
   if (!top) return;
@@ -577,7 +567,7 @@ async function titleView(type, id, live) {
   const more = section('More like this', null, recWrap);
   if (!live()) return;
   show(hero, scorebox, h('div.title-body', main, side), more);
-  trailPush(f.title, type);
+  crumbs(type === 'tv' ? ['Series', '#/discover?type=tv'] : ['Films', '#/films'], [f.title, null]);
 
   // recommendations (TMDB recommendations + similar), checked against the rules
   const raw = dedupe([...(d.recommendations?.results || []), ...(d.similar?.results || [])], x => x.id).filter(x => x.id !== id).slice(0, 40);
@@ -647,7 +637,7 @@ async function personView(id, q, live) {
   const countEl = h('span.count');
 
   const drawTabs = () => tabs.replaceChildren(...Object.keys(roles).filter(k => roles[k].length).map(k =>
-    h('button' + (k === tab ? '.on' : ''), { type: 'button', role: 'tab', 'aria-selected': String(k === tab), onclick: () => { tab = k; limit = 60; drawTabs(); draw(); } }, `${labels[k]} ${roles[k].length}`)));
+    h('button' + (k === tab ? '.on' : ''), { type: 'button', role: 'tab', 'aria-selected': String(k === tab), onclick: () => { tab = k; limit = 60; drawTabs(); draw(); crumbs(tab === 'directing' ? ['Directors', '#/people?role=director'] : ['Actors', '#/people?role=actor'], [p.name, null]); } }, `${labels[k]} ${roles[k].length}`)));
 
   let drawToken = 0;
   const draw = async () => {
@@ -681,7 +671,7 @@ async function personView(id, q, live) {
   show(head, h('section.section',
     h('header', h('h2.sec', 'Filmography', countEl), h('div.controls', tabs, sortSel, obsc)),
     listWrap, moreBtn));
-  trailPush(p.name, 'person');
+  crumbs(tab === 'directing' ? ['Directors', '#/people?role=director'] : ['Actors', '#/people?role=actor'], [p.name, null]);
   drawTabs();
   await draw();
 }
@@ -828,7 +818,18 @@ async function discoverView(q, live) {
       : 'Ordered by how people whose ratings resemble yours rated them, then checked against your rules.')
       + (mixOn ? ' Live action and animation are mixed; use the switch for one or the other.' : '')) : null,
     list.el, status, note, moreBtn));
-  trailPush(heading, 'discover');
+  {
+    const acc = { type: type === 'tv' ? 'tv' : '' };
+    const link = (o) => '#/discover?' + new URLSearchParams(Object.entries(o).filter(([, v]) => v)).toString();
+    const path = [];
+    if (type === 'tv') path.push(['Series', '#/discover?type=tv']);
+    if (country) { path.push(['Countries', '#/countries']); acc.country = country; path.push([countryName(country), link(acc)]); }
+    if (genre) { if (!country) path.push(['Genres', '#/genres' + (type === 'tv' ? '?type=tv' : '')]); acc.genre = genre; path.push([genreName(+genre), link(acc)]); }
+    if (decade) { if (!country && !genre) path.push(['Decades', '#/decades']); acc.decade = decade; path.push([decade + 's', link(acc)]); }
+    if (keyword) { acc.keyword = keyword; acc.kwname = kwname; path.push([`“${kwname}”`, link(acc)]); }
+    if (!path.length) path.push(['All films', null]);
+    crumbs(...path);
+  }
   await loadMore();
 }
 
@@ -854,7 +855,7 @@ async function searchView(q, live) {
   if (mode === 'film') kids.push(titleSec, peopleSec); else kids.push(peopleSec, titleSec);
   if (!people.length && !titles.length) kids.push(h('p.empty', 'Nothing found. Check the spelling, or try the original title.'));
   show(...kids.filter(Boolean));
-  trailPush(`“${s}”`, 'search');
+  crumbs([`Search “${s}”`, null]);
   list.emptyEl.textContent = 'Checking…';
   list.add(await check(titles.slice(0, 30), 'movie'));
   if (!live()) return;
@@ -884,7 +885,7 @@ async function countriesView(live) {
   show(h('h1.h-display', 'Countries'), filter,
     section('In your ratings', mine.length, h('div.picklist', mine.map(g => pick(g.key.slice(2), countryName(g.key.slice(2)), g)))),
     section('Everywhere else', null, h('p.note', 'Iran, Spain and the Middle East stay listed, but your rules hide what they make.'), allList));
-  trailPush('Countries', 'pick');
+  crumbs(['Countries', null]);
 }
 
 async function genresView(q, live) {
@@ -901,7 +902,7 @@ async function genresView(q, live) {
   show(h('h1.h-display', 'Genres'),
     h('div.seg', [['movie', 'Films'], ['tv', 'Series']].map(([v, l]) => h('button' + (type === v ? '.on' : ''), { type: 'button', onclick: () => go('/genres', { type: v }) }, l))),
     h('div.picklist', list.map(([id, name]) => h('a.pick', { href: `#/discover?type=${type}&genre=${id}` }, h('span.p-n', name), statFor(stats(id))))));
-  trailPush('Genres', 'pick');
+  crumbs(['Genres', null]);
 }
 
 async function decadesView(q, live) {
@@ -910,7 +911,7 @@ async function decadesView(q, live) {
   const stats = (d) => { const it = prof.entries.filter(e => e.year >= d && e.year < d + 10); return it.length ? { n: it.length, n8: it.filter(e => e.rating >= 8).length } : null; };
   show(h('h1.h-display', 'Decades'),
     h('div.picklist', DECADES.map(d => h('a.pick', { href: `#/discover?decade=${d}` }, h('span.p-n', d + 's'), statFor(stats(d))))));
-  trailPush('Decades', 'pick');
+  crumbs(['Decades', null]);
 }
 
 async function seedsView(q, live) {
@@ -923,7 +924,7 @@ async function seedsView(q, live) {
     h('p.lede', 'Open any of these to see what TMDB connects it to, filtered by your rules.'),
     h('div.seg', [[10, '10s'], [9, '9 and up'], [8, '8 and up']].map(([v, l]) => h('button' + (min === v ? '.on' : ''), { type: 'button', onclick: () => go('/seeds', { min: v }) }, l))),
     section('Your ratings', list.length, h('div.grid', list.map(seedCard))));
-  trailPush('Favourites', 'pick');
+  crumbs(['Your favourites', null]);
 }
 
 // ---------------- Saved list ----------------
@@ -970,7 +971,7 @@ async function savedView(q, live) {
     tab === 'seen' && pend.length ? h('p.note', `${pend.length} score${pend.length > 1 ? 's are' : ' is'} not on IMDb yet. "Rate" opens the film in IMDb (its app, if installed): tap Rate there, pick the same score, then tap Done here.`) : null,
     items.length ? h('div.saved-list', items.map(row)) : h('p.empty', tab === 'watchlist' ? 'Nothing saved yet. Tap "Want to watch" on any film.' : tab === 'seen' ? 'Tap a score on any film page to log it here.' : 'Titles you dismiss land here, so you can undo.'),
     h('p.note', isAdmin() ? 'Saved in this browser. "Copy for Claude" gives a log you can paste into a chat to keep the recommender skill in sync.' : 'Saved on this device.')].filter(Boolean));
-  trailPush('Your list', 'saved');
+  crumbs(['Your list', null]);
 }
 
 // ---------------- Settings ----------------
@@ -1030,7 +1031,7 @@ async function settingsView(live) {
 
   if (!live()) return;
   show(h('h1.h-display', 'Settings'), h('div.settings-grid', keyBox, dataBox, rulesBox, viewBox));
-  trailPush('Settings', 'settings');
+  crumbs(['Settings', null]);
 }
 
 // ---------------- Header search with live suggestions ----------------
