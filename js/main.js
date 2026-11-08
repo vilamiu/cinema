@@ -230,7 +230,7 @@ async function homeView(live) {
   const canPromise = hasKey() && tasteData()?.total;
   const promWrap = h('div.rail', loading('Finding your best bets'));
   if (canPromise) {
-    kids.push(section('Promising for you', null,
+    kids.push(section('Promising for you', `(${prof.total} movies reviewed)`,
       h('p.note', 'Ranked by people whose ratings look like yours, then checked against your rules.'),
       promWrap,
       h('div.row', h('a.btn.small', { href: '#/discover?sort=promising' }, 'More promising films'), h('a.btn.small', { href: '#/genres' }, 'Promising by genre'))));
