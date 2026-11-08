@@ -245,6 +245,7 @@ a.chip:hover { color: var(--light); border-color: var(--faint); }
 .score .v { font-family: var(--display); font-weight: 800; font-size: 30px; line-height: 1; }
 .score .k { font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--faint); }
 .score.mine .v { color: var(--bulb); }
+.score .k.plain { text-transform: none; letter-spacing: .02em; font-size: 12px; }
 .title-body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 28px; align-items: start; }
 @media (max-width: 900px) { .title-body { grid-template-columns: minmax(0, 1fr); } }
 .title-main, .title-side { display: grid; gap: 22px; min-width: 0; }

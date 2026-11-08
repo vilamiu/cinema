@@ -444,7 +444,7 @@ async function titleView(type, id, live) {
           ...(f.countries || []).map(c => h('a', { href: `#/discover?type=${type}&country=${c}` }, countryName(c)))),
         h('div.row', { style: { marginTop: '12px' } }, (d.genres || []).map(g => h('a.chip', { href: `#/discover?type=${type}&genre=${g.id}` }, g.name))),
         h('div.scores',
-          f.vote ? h('div.score', h('span.v', f.vote.toFixed(1)), h('span.k', `TMDB · ${fmtVotes(f.votes)} votes`)) : null,
+          f.vote ? h('div.score', { title: `TMDB rating from ${f.votes.toLocaleString()} votes` }, h('span.v', f.vote.toFixed(1)), h('span.k.plain', fmtVotes(f.votes))) : null,
           ev.rated?.imdbRating ? h('div.score', h('span.v', ev.rated.imdbRating.toFixed(1)), h('span.k', 'IMDb')) : null,
           mine ? h('div.score.mine', h('span.v', String(mine)), h('span.k', 'You')) : null))));
 
