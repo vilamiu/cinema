@@ -367,7 +367,10 @@ body.locked .top, body.locked #view, body.locked footer.site { display: none !im
 .gate-mark .bulbs { grid-template-columns: repeat(3, 8px); gap: 4px; }
 .gate-mark .bulbs i { width: 8px; height: 8px; }
 .gate-lede { color: var(--dim); margin: 0; }
-.gate-btn { min-height: 44px; }
+/* Google draws its button in an iframe; matching its light colour scheme keeps the iframe transparent
+   instead of the browser painting a white box behind it on our dark page. */
+.gate-btn { min-height: 44px; color-scheme: light; }
+.gate-btn iframe { color-scheme: light; background: transparent; }
 .gate-msg { min-height: 1.5em; margin: 0; color: var(--dim); font-size: 14px; }
 .gate-msg.err { color: var(--veto); }
 body.viewer [data-nav="settings"] { display: none; }
