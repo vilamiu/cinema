@@ -1,12 +1,12 @@
 // Cinema: router, views, header search, trail.
 import { h, debounce, fmtRuntime, fmtVotes, countryName, demonym, genreName, DECADES, MOVIE_GENRES, TV_GENRES, norm } from './util.js';
-import { store, verdicts, setVerdict, settings, setSettings, rulesOff, setRuleOff } from './store.js';
+import { store, verdicts, setVerdict, settings, setSettings, rulesOff, setRuleOff, onVerdictWrite } from './store.js';
 import * as tmdb from './tmdb.js';
 import { AuthError, hasKey, img } from './tmdb.js';
 import { evaluate, HARD_RULES, imdbGenres } from './rules.js';
 import { loadProfile, getProfile, onProfile, personRatings, syncProfile, isSyncing, importRatings, resetImport, rebuildProfile } from './profile.js';
 import { card, ResultList, personCard, posterBox, trailerBox, loading, icons, titleHref } from './components.js';
-import { loadTaste, tasteData, tasteOf, tier, promiseKey, resolveImdb } from './taste.js';
+import { loadTaste, tasteData, tasteOf, tier, promiseKey, resolveImdb, retune } from './taste.js';
 import { ensureSignedIn, isAdmin, signOut, currentUser } from './auth.js';
 import { onRemoteChange, publishKey, cloudOn } from './cloud.js';
 
@@ -497,7 +497,9 @@ async function titleView(type, id, live) {
       const line = !t ? h('li.info', 'No verdict: too few people with your taste have rated it.')
         : tr.id === 'below' ? h('li.flag', `${tr.label}: the ${t.raters} people with taste like yours who rated it mostly scored it below your average.`)
         : h('li' + (tr.id === 'mid' ? '.info' : '.good'), `${tr.label}: ranked in the top ${Math.max(1, Math.round(tr.pct * 100))}% of ${td.total.toLocaleString()} films, from ${t.raters} people with taste like yours.`);
-      items.push(h('h3', 'Your taste'), h('ul.vlist', line));
+      const learned = t && t.corr <= -0.1 && t.because.length
+        ? h('li.flag', `Lowered because you dismissed ${t.because.join(' and ')}: people rate them alike.`) : null;
+      items.push(h('h3', 'Your taste'), h('ul.vlist', line, learned));
     }
     items.push(h('h3', 'Your rules'), list);
     if (info.length) items.push(h('h3', 'Your data'), h('ul.vlist', info.map(g => h('li.info', `${g.label.replace(/^Your /, '')}: ${g.n} rated · ${g.n8} at 8+ · avg ${g.avg.toFixed(1)}`))));
@@ -1032,6 +1034,8 @@ async function settingsView(live) {
   const viewBox = h('div.panel', h('h2', 'Lists'),
     h('label.rule', h('span.switch', h('input', { type: 'checkbox', checked: s.showHidden, onchange: (e) => setSettings({ showHidden: e.target.checked }) }), h('span')),
       h('div', h('div.rt', 'Show hidden titles by default'), h('div.rn', 'Greyed out with the reason. Otherwise one tap on "Show them" under each list.'))),
+    h('label.rule', h('span.switch', h('input', { type: 'checkbox', checked: s.learn !== false, onchange: (e) => { setSettings({ learn: e.target.checked }); retune(verdicts(), e.target.checked); toast(e.target.checked ? 'Learning from Not for me' : 'Not learning from Not for me'); } }), h('span')),
+      h('div', h('div.rt', 'Learn from "Not for me"'), h('div.rn', 'Each film you dismiss (or score 4 or less here) pushes down the films people rate the same way. On your past ratings this raised the share of 8+ among top picks from about 54% to 60%.'))),
     h('label.controls', 'Minimum votes for "Top rated"', h('input', { type: 'number', min: 20, max: 5000, step: 10, value: s.minVotes, onchange: (e) => setSettings({ minVotes: Math.max(20, +e.target.value || 200) }) })),
     h('button.btn.small.ghost', { type: 'button', onclick: () => { store.keys('f:').forEach(k => store.del(k)); toast('Cache cleared'); } }, 'Clear cached title checks'));
 
@@ -1115,13 +1119,17 @@ window.addEventListener('hashchange', route);
 document.getElementById('signOut')?.addEventListener('click', (e) => { e.preventDefault(); signOut(); });
 (async () => {
   await ensureSignedIn();
+  const tune = () => retune(verdicts(), settings().learn !== false);
+  onVerdictWrite(tune);
   onRemoteChange(() => {
+    tune();
     rebuildProfile();
     const { path } = parseHash();
     if (path === '/saved' || path === '/') route();
   });
   show(loading('Loading your ratings'));
   await Promise.all([loadProfile(), loadTaste()]);
+  tune();
   onProfile(() => {
     const { path } = parseHash();
     if (['/', '/seeds', '/settings'].includes(path) && !isSyncing()) route();
