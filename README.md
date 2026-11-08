@@ -30,4 +30,7 @@ The site needs a free TMDB key (Settings → API on themoviedb.org). Paste it on
 
 ## Tech
 
+Before each commit run `python3 tools/stamp.py`: it versions every module, the stylesheet and `version.json`, and the page reloads itself once when a newer version is live, so browsers never keep stale code.
+
+
 Static site, no build step: `index.html`, `css/app.css`, ES modules in `js/`. Data and images from [TMDB](https://www.themoviedb.org). This product uses the TMDB API but is not endorsed or certified by TMDB.
