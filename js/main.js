@@ -683,7 +683,8 @@ async function discoverView(q, live) {
   const type = q.get('type') === 'tv' ? 'tv' : 'movie';
   const genre = q.get('genre') || '', country = q.get('country') || '', decade = q.get('decade') || '';
   const sort = q.get('sort') || 'promising', keyword = q.get('keyword') || '', kwname = q.get('kwname') || '';
-  const state = { type, genre, country, decade, sort, keyword, kwname };
+  const anim = genre === '16' ? '' : (['live', 'only'].includes(q.get('anim')) ? q.get('anim') : '');
+  const state = { type, genre, country, decade, sort, keyword, kwname, anim };
   const set = (patch) => go('/discover', { ...state, ...patch });
 
   const titleParts = [country && demonym(country), genre && genreName(+genre), decade && decade + 's', kwname && `“${kwname}”`].filter(Boolean);
@@ -704,6 +705,8 @@ async function discoverView(q, live) {
       h('optgroup', { label: 'All countries' }, countries.filter(([c]) => !mineC.includes(c)).map(([c, n]) => h('option', { value: c, selected: c === country }, n)))),
     h('select', { 'aria-label': 'Decade', onchange: (e) => set({ decade: e.target.value }) }, h('option', { value: '' }, 'Any decade'), DECADES.map(d => h('option', { value: d, selected: String(d) === decade }, d + 's'))),
     h('select', { 'aria-label': 'Sort', onchange: (e) => set({ sort: e.target.value }) }, SORTS.map(([v, l]) => h('option', { value: v, selected: v === sort }, l))),
+    genre === '16' ? null : h('div.seg', { role: 'group', 'aria-label': 'Animation' },
+      [['', 'All'], ['live', 'Live action'], ['only', 'Animation']].map(([v, l]) => h('button' + (anim === v ? '.on' : ''), { type: 'button', onclick: () => set({ anim: v }) }, l))),
     kwname ? h('span.chip.solid', `Keyword: ${kwname}`, h('button', { type: 'button', 'aria-label': 'Remove keyword', onclick: () => set({ keyword: '', kwname: '' }) }, icons.x())) : null);
 
   // your stats for this slice
@@ -712,7 +715,7 @@ async function discoverView(q, live) {
 
   const minVotes = settings().minVotes;
   const today = new Date().toISOString().slice(0, 10);
-  const params = { with_genres: genre, with_origin_country: country, with_keywords: keyword };
+  const params = { with_genres: [genre, anim === 'only' ? '16' : ''].filter(Boolean).join(','), without_genres: anim === 'live' ? '16' : '', with_origin_country: country, with_keywords: keyword };
   const df = type === 'movie' ? 'primary_release_date' : 'first_air_date';
   if (decade) { params[df + '.gte'] = `${decade}-01-01`; params[df + '.lte'] = `${+decade + 9}-12-31`; }
   const tvScale = type === 'tv' ? 0.4 : 1;
@@ -720,27 +723,45 @@ async function discoverView(q, live) {
   if (sort === 'gems') Object.assign(params, { sort_by: 'vote_average.desc', 'vote_count.gte': Math.round(80 * tvScale), 'vote_count.lte': Math.round(1500 * tvScale) });
   if (sort === 'popular') Object.assign(params, { sort_by: 'popularity.desc', 'vote_count.gte': 50 });
   if (sort === 'newest') Object.assign(params, { sort_by: df + '.desc', [df + '.lte']: today, 'vote_count.gte': 20 });
-  // Promising: walk the taste list for this slice; with a country or keyword (unknown offline), or once the
-  // taste list runs out, take TMDB's best-known titles in the slice and rank each page by the same key.
+  // Promising: walk the taste list for this slice. With a country or keyword (unknown offline), or once the
+  // taste list runs out, pool TMDB's most-voted AND top-rated titles in the slice and rank each batch by the same key.
+  // Live action and animation are interleaved 2:1 unless the switch picks one, so anime can't crowd out the rest.
   const promising = sort === 'promising';
-  if (promising) Object.assign(params, { sort_by: 'vote_count.desc', 'vote_count.gte': type === 'tv' ? 30 : 80 });
+  const streams = promising
+    ? [{ params: { ...params, sort_by: 'vote_count.desc', 'vote_count.gte': type === 'tv' ? 30 : 80 }, page: 1, total: Infinity },
+       { params: { ...params, sort_by: 'vote_average.desc', 'vote_count.gte': type === 'tv' ? 60 : 150 }, page: 1, total: Infinity }]
+    : [{ params, page: 1, total: Infinity }];
   const gNames = genre ? imdbGenres([+genre]) : null;
   const tasteState = { next: 0, done: !promising || !!country || !!keyword || type === 'tv' || !tasteData()?.total };
-  const tasteFilter = (t) => (!gNames || t.genres.some(g => gNames.includes(g))) && (!decade || (t.year >= +decade && t.year <= +decade + 9));
+  const tasteFilter = (t) => (!gNames || t.genres.some(g => gNames.includes(g))) && (!decade || (t.year >= +decade && t.year <= +decade + 9))
+    && (anim !== 'live' || !t.genres.includes('Animation')) && (anim !== 'only' || t.genres.includes('Animation'));
+  const mixOn = promising && !anim && genre !== '16';
+  const isAnim = (x) => (x.f.genres || []).includes(16);
+  const mix = (items) => {
+    if (!mixOn) return items;
+    const vis = items.filter(x => !x.ev.hide.length), hid = items.filter(x => x.ev.hide.length);
+    const la = vis.filter(x => !isAnim(x)), an = vis.filter(isAnim), out = [];
+    let i = 0, j = 0;
+    while (i < la.length || j < an.length) {
+      for (let k = 0; k < 2 && i < la.length; k++) out.push(la[i++]);
+      if (j < an.length) out.push(an[j++]);
+    }
+    return [...out, ...hid];
+  };
 
   const list = new ResultList({ showHidden: settings().showHidden, empty: 'Nothing on these pages passes your rules. Load more, or loosen a filter.' });
   const status = h('div.status', { hidden: true });
   const moreBtn = h('button.btn', { type: 'button', hidden: true }, 'Load more');
   const countEl = h('span.count');
   const note = h('p.note');
-  let page = 1, totalPages = 1, totalResults = 0;
+  let totalResults = 0;
 
   const loadMore = async () => {
     moreBtn.hidden = true; status.hidden = false; status.replaceChildren(h('span.spin'), promising ? 'Ranking by your taste and checking your rules' : 'Fetching and checking');
     if (!tasteState.done) {
       const got = await walkTaste(tasteState, { filter: tasteFilter, match: (f) => f.type === type, want: 16, maxExamine: 120 });
       if (!live()) return;
-      list.add(got);
+      list.add(mix(got));
       status.hidden = true;
       moreBtn.hidden = false;
       countEl.textContent = `${list.visibleCount} pass · ranked by people with your taste`;
@@ -748,21 +769,33 @@ async function discoverView(q, live) {
       if (!list.items.length) list.emptyEl.textContent = 'None of the first matches pass your rules. Load more.';
       return;
     }
-    let added = 0, tries = 0;
-    while (tries < 3 && page <= totalPages) {
-      const r = await tmdb.discover(type, { ...params, page });
+    let added = 0, rounds = 0;
+    const open = () => streams.some(st => st.page <= st.total);
+    while (rounds < 3 && open()) {
+      rounds++;
+      const reqs = [];
+      for (const st of streams) {
+        for (let k = 0; k < (promising ? 2 : 1) && st.page <= st.total; k++, st.page++) {
+          reqs.push(tmdb.discover(type, { ...st.params, page: st.page }).then(r => {
+            st.total = Math.min(r.total_pages || 1, 500);
+            if (st === streams[0]) totalResults = r.total_results || 0;
+            return r.results || [];
+          }));
+        }
+      }
+      const results = (await Promise.all(reqs)).flat();
       if (!live()) return;
-      page++; tries++; totalPages = Math.min(r.total_pages || 1, 500); totalResults = r.total_results || 0;
+      const fresh = dedupe(results, x => x.id).filter(x => !list.keys.has(type + ':' + x.id));
       const before = list.visibleCount;
-      const batch = await check(r.results || [], type);
-      if (promising) batch.sort(byPromise);
-      list.add(batch);
+      let batch = await check(fresh, type);
       if (!live()) return;
+      if (promising) { batch.sort(byPromise); batch = mix(batch); }
+      list.add(batch);
       added += list.visibleCount - before;
       if (added >= 12) break;
     }
     status.hidden = true;
-    moreBtn.hidden = page > totalPages;
+    moreBtn.hidden = !open();
     countEl.textContent = `${list.visibleCount} pass · ${list.items.length} checked of ${fmtVotes(totalResults)}`;
     if (!list.items.length) list.emptyEl.textContent = 'TMDB has nothing for this combination. Loosen a filter.';
   };
@@ -774,9 +807,10 @@ async function discoverView(q, live) {
     statText ? h('div.mono.dim', statText) : null,
     controls),
   h('section.section', h('header', h('h2.sec', SORTS.find(s => s[0] === sort)[1], countEl)),
-    promising ? h('p.note', country || keyword || type === 'tv'
-      ? 'Best-known titles in this slice, each page ordered by how people with your taste rated them.'
-      : 'Ordered by how people whose ratings resemble yours rated them, then checked against your rules.') : null,
+    promising ? h('p.note', (country || keyword || type === 'tv'
+      ? 'The best-known and top-rated titles in this slice, ordered by how people with your taste rated them.'
+      : 'Ordered by how people whose ratings resemble yours rated them, then checked against your rules.')
+      + (mixOn ? ' Live action and animation are mixed; use the switch for one or the other.' : '')) : null,
     list.el, status, note, moreBtn));
   trailPush(heading, 'discover');
   await loadMore();
