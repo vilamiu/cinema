@@ -1,0 +1,14 @@
+{
+ "googleClientId": "683285057346-q1ifuevk7lnscb5sfnk6v9s13n4279lc.apps.googleusercontent.com",
+ "salt": "cinema-v1",
+ "users": [
+  {
+   "id": "60b6d7e1633ef26a657426591ed5cc86270e0bcdb8a31455daeadfa1a8e61288",
+   "role": "admin"
+  },
+  {
+   "id": "034fde5094852c366e9c93b564944b7f20a9c740d54ff2b97ca3f2c8bfc72f8b",
+   "role": "viewer"
+  }
+ ]
+}

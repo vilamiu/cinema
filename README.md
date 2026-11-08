@@ -17,7 +17,7 @@ A personal film explorer. Start from an actor, director, film, country, genre or
 
 ## Sign-in
 
-`data/access.json` (built with `node tools/access.mjs --client-id … --tmdb … --user admin:… --user viewer:…`) turns on a Google sign-in screen. Emails are stored only as salted hashes; the TMDB token is stored once per account, encrypted with a key derived from that account's email, so viewers never need to paste a key. Admin: everything. Viewer: browse and keep a personal "Want to watch" list; no scores, no "Not for me", no Settings. It is a client-side gate: on GitHub Pages the code and data files remain publicly readable. Without `data/access.json` the gate is off.
+`data/access.json` (built with `node tools/access.mjs --client-id … --user admin:… --user viewer:…`) turns on a Google sign-in screen. Emails are stored only as salted hashes; no TMDB key is stored in the repo, so each device pastes one once. Admin: everything. Viewer: browse and keep a personal "Want to watch" list; no scores, no "Not for me", no Settings. It is a client-side gate: on GitHub Pages the code and data files remain publicly readable. Without `data/access.json` the gate is off.
 
 ## Setup
 

@@ -189,11 +189,7 @@ function keyPanel(message) {
     keyForm());
 }
 
-function noKeyNote() {
-  return h('section.panel', h('h2.sec', 'Film data is locked on this device'), h('p.note', 'Sign out and sign in again to unlock it. If that doesn\'t help, ask the admin.'),
-    h('button.btn', { type: 'button', onclick: signOut }, 'Sign out'));
-}
-function keyOrNote(msg) { return isAdmin() ? keyPanel(msg) : noKeyNote(); }
+function keyOrNote(msg) { return keyPanel(msg); }
 
 function renderError(e) {
   if (e instanceof AuthError) {
