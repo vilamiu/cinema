@@ -7,6 +7,7 @@ import { evaluate, HARD_RULES, imdbGenres } from './rules.js';
 import { loadProfile, getProfile, onProfile, personRatings, syncProfile, isSyncing, importRatings, resetImport, rebuildProfile } from './profile.js';
 import { card, ResultList, personCard, posterBox, trailerBox, loading, icons, titleHref } from './components.js';
 import { loadTaste, tasteData, tasteOf, tier, promiseKey, resolveImdb } from './taste.js';
+import { ensureSignedIn, isAdmin, signOut } from './auth.js';
 
 const view = document.getElementById('view');
 // Replace the page content; null/false children are skipped (the DOM would print them as text).
@@ -188,9 +189,15 @@ function keyPanel(message) {
     keyForm());
 }
 
+function noKeyNote() {
+  return h('section.panel', h('h2.sec', 'Film data is locked on this device'), h('p.note', 'Sign out and sign in again to unlock it. If that doesn\'t help, ask the admin.'),
+    h('button.btn', { type: 'button', onclick: signOut }, 'Sign out'));
+}
+function keyOrNote(msg) { return isAdmin() ? keyPanel(msg) : noKeyNote(); }
+
 function renderError(e) {
   if (e instanceof AuthError) {
-    show(keyPanel(hasKey() ? 'TMDB rejected the saved key. Paste it again or make a new one.' : null));
+    show(keyOrNote(hasKey() ? 'TMDB rejected the saved key. Paste it again or make a new one.' : null));
     return;
   }
   console.error(e);
@@ -212,7 +219,8 @@ async function route() {
   window.scrollTo(0, 0);
   const needsKey = !['/', '/saved', '/settings', '/seeds'].includes(path);
   try {
-    if (needsKey && !hasKey()) { show(keyPanel()); return; }
+    if (!isAdmin() && path === '/settings') { location.replace('#/'); return; }
+    if (needsKey && !hasKey()) { show(keyOrNote()); return; }
     let m;
     if (path === '/') await homeView(live);
     else if ((m = path.match(/^\/(movie|tv)\/(\d+)$/))) await titleView(m[1], +m[2], live);
@@ -251,7 +259,7 @@ async function homeView(live) {
   document.title = 'Cinema';
   const prof = getProfile();
   const kids = [];
-  if (!hasKey()) kids.push(keyPanel());
+  if (!hasKey()) kids.push(keyOrNote());
   const nCountries = [...prof.groups.keys()].filter(k => k.startsWith('c:')).length;
   const canPromise = hasKey() && tasteData()?.total;
   const promWrap = h('div.rail', loading('Finding your best bets'));
@@ -509,6 +517,14 @@ async function titleView(type, id, live) {
   const imdbUrl = f.imdb ? `https://www.imdb.com/title/${f.imdb}/` : `https://www.imdb.com/find/?q=${encodeURIComponent(f.title + ' ' + (f.year || ''))}`;
   const drawScore = () => {
     const v = verdicts()[f.type + ':' + f.id];
+    if (!isAdmin()) {
+      // viewers: only "Want to watch" (their own list on their device)
+      const on = v?.status === 'watchlist';
+      scorebox.className = 'watchbox';
+      scorebox.replaceChildren(h('button.btn' + (on ? '.on' : '.primary'), { type: 'button', onclick: () => { setVerdict(f, { status: on ? null : 'watchlist' }); toast(on ? 'Removed from your list' : 'Added to your list'); drawScore(); } },
+        on ? icons.check() : icons.plus(), on ? 'On your list' : 'Want to watch'));
+      return;
+    }
     const appScore = v?.status === 'seen' ? v.rating : null;
     const current = appScore ?? ev.rated?.rating ?? null;
     const pick = (n) => {
@@ -916,7 +932,7 @@ async function seedsView(q, live) {
 // ---------------- Saved list ----------------
 async function savedView(q, live) {
   document.title = 'Your list · Cinema';
-  const tab = q.get('tab') || 'watchlist';
+  const tab = isAdmin() ? (q.get('tab') || 'watchlist') : 'watchlist';
   const all = Object.values(verdicts()).sort((a, b) => String(b.at).localeCompare(String(a.at)));
   const by = (s) => all.filter(x => x.status === s);
   const tabs = [['watchlist', 'To watch'], ['seen', 'Scored here'], ['notforme', 'Not for me']];
@@ -951,12 +967,12 @@ async function savedView(q, live) {
   };
   show(...[
     h('h1.h-display', 'Your list'),
-    h('div.controls', h('div.seg', tabs.map(([v, l]) => h('button' + (tab === v ? '.on' : ''), { type: 'button', onclick: () => go('/saved', { tab: v }) }, l))),
+    isAdmin() ? h('div.controls', h('div.seg', tabs.map(([v, l]) => h('button' + (tab === v ? '.on' : ''), { type: 'button', onclick: () => go('/saved', { tab: v }) }, l))),
       all.length ? h('button.btn.small', { type: 'button', onclick: copy }, 'Copy for Claude') : null,
-      all.length ? h('button.btn.small', { type: 'button', onclick: download }, 'Download CSV') : null),
+      all.length ? h('button.btn.small', { type: 'button', onclick: download }, 'Download CSV') : null) : null,
     tab === 'seen' && pend.length ? h('p.note', `${pend.length} score${pend.length > 1 ? 's are' : ' is'} not on IMDb yet. "Rate" opens the film in IMDb (its app, if installed): tap Rate there, pick the same score, then tap Done here.`) : null,
     items.length ? h('div.saved-list', items.map(row)) : h('p.empty', tab === 'watchlist' ? 'Nothing saved yet. Tap "Want to watch" on any film.' : tab === 'seen' ? 'Tap a score on any film page to log it here.' : 'Titles you dismiss land here, so you can undo.'),
-    h('p.note', 'Saved in this browser. "Copy for Claude" gives a log you can paste into a chat to keep the recommender skill in sync.')].filter(Boolean));
+    h('p.note', isAdmin() ? 'Saved in this browser. "Copy for Claude" gives a log you can paste into a chat to keep the recommender skill in sync.' : 'Saved on this device.')].filter(Boolean));
   trailPush('Your list', 'saved');
 }
 
@@ -1085,7 +1101,9 @@ document.addEventListener('keydown', (e) => {
 
 // ---------------- boot ----------------
 window.addEventListener('hashchange', route);
+document.getElementById('signOut')?.addEventListener('click', (e) => { e.preventDefault(); signOut(); });
 (async () => {
+  await ensureSignedIn();
   show(loading('Loading your ratings'));
   await Promise.all([loadProfile(), loadTaste()]);
   onProfile(() => {

@@ -15,6 +15,10 @@ A personal film explorer. Start from an actor, director, film, country, genre or
 - **Your score:** a 1–10 bar under every title. A score counts at once (hides the title, feeds the own-data veto). IMDb has no API that accepts ratings from other sites, so each new score shows a "Rate on IMDb" button that opens the title in IMDb's app or site; tap the same score there, then "It's on IMDb". Scores not yet on IMDb wait in Your list → Scored here, with a count on the List icon.
 - **List:** to-watch, seen (with my rating) and not-for-me, stored in the browser. "Copy for Claude" exports a log for the recommender skill.
 
+## Sign-in
+
+`data/access.json` (built with `node tools/access.mjs --client-id … --tmdb … --user admin:… --user viewer:…`) turns on a Google sign-in screen. Emails are stored only as salted hashes; the TMDB token is stored once per account, encrypted with a key derived from that account's email, so viewers never need to paste a key. Admin: everything. Viewer: browse and keep a personal "Want to watch" list; no scores, no "Not for me", no Settings. It is a client-side gate: on GitHub Pages the code and data files remain publicly readable. Without `data/access.json` the gate is off.
+
 ## Setup
 
 The site needs a free TMDB key (Settings → API on themoviedb.org). Paste it on first visit; it is stored only in that browser.

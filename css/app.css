@@ -365,3 +365,17 @@ footer.site a { color: var(--dim); text-decoration: underline; text-underline-of
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- Sign-in gate and roles ---------- */
+body.locked .top, body.locked #view, body.locked footer.site { display: none !important; }
+.gate { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; }
+.gate-card { display: grid; gap: 18px; justify-items: center; text-align: center; max-width: 360px; }
+.gate-mark { font-size: 44px; }
+.gate-mark .bulbs { grid-template-columns: repeat(3, 8px); gap: 4px; }
+.gate-mark .bulbs i { width: 8px; height: 8px; }
+.gate-lede { color: var(--dim); margin: 0; }
+.gate-btn { min-height: 44px; }
+.gate-msg { min-height: 1.5em; margin: 0; color: var(--dim); font-size: 14px; }
+.gate-msg.err { color: var(--veto); }
+body.viewer [data-nav="settings"] { display: none; }
+.watchbox { display: flex; }
