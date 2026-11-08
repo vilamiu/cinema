@@ -6,6 +6,7 @@ import { AuthError, hasKey, img } from './tmdb.js';
 import { evaluate, HARD_RULES, imdbGenres } from './rules.js';
 import { loadProfile, getProfile, onProfile, personRatings, syncProfile, isSyncing, importRatings, resetImport } from './profile.js';
 import { card, ResultList, personCard, posterBox, trailerBox, loading, icons, titleHref } from './components.js';
+import { loadTaste, tasteData, tasteOf, tier, promiseKey, resolveImdb } from './taste.js';
 
 const view = document.getElementById('view');
 let navToken = 0;
@@ -28,6 +29,36 @@ async function check(items, type, ctx = {}) {
     return { f, ev: evaluate(f, prof, v, off, ctx) };
   }));
 }
+
+// Walk the taste list (best predicted first): resolve each IMDb id on TMDB, then check it against the rules.
+// filter(t) runs on the offline record (year, IMDb genres); match(f) on TMDB facts (type, country, keyword).
+async function walkTaste(state, { filter = () => true, match = () => true, want = 16, maxExamine = 96, ctx = {} } = {}) {
+  const films = tasteData()?.films || [];
+  const out = [];
+  let examined = 0;
+  while (state.next < films.length && examined < maxExamine && out.filter(x => !x.ev.hide.length).length < want) {
+    const chunk = [];
+    while (state.next < films.length && chunk.length < 12) { const t = films[state.next++]; if (filter(t)) chunk.push(t); }
+    if (!chunk.length) break;
+    examined += chunk.length;
+    const facts = await Promise.all(chunk.map(async (t) => {
+      try {
+        const m = await resolveImdb(t.imdb);
+        if (!m) return null;
+        const f = await tmdb.getFacts(m.type, m.id);
+        if (!f.imdb) f.imdb = t.imdb;
+        return f;
+      } catch (e) { if (e instanceof AuthError) throw e; return null; }
+    }));
+    const prof = getProfile(), v = verdicts(), off = rulesOff();
+    for (const f of facts) if (f && match(f)) out.push({ f, ev: evaluate(f, prof, v, off, ctx) });
+  }
+  state.done = state.next >= films.length;
+  state.examined = (state.examined || 0) + examined;
+  out.sort((a, b) => promiseKey(b, weighted(b.f)) - promiseKey(a, weighted(a.f)));
+  return out;
+}
+const byPromise = (a, b) => promiseKey(b, weighted(b.f)) - promiseKey(a, weighted(a.f));
 
 function dedupe(list, key = (x) => (x.media_type || '') + x.id) {
   const seen = new Set();
@@ -177,6 +208,14 @@ async function homeView(live) {
   const kids = [];
   if (!hasKey()) kids.push(keyPanel());
   const nCountries = [...prof.groups.keys()].filter(k => k.startsWith('c:')).length;
+  const canPromise = hasKey() && tasteData()?.total;
+  const promWrap = h('div.rail', loading('Finding your best bets'));
+  if (canPromise) {
+    kids.push(section('Promising for you', null,
+      h('p.note', 'Ranked by people whose ratings look like yours, then checked against your rules.'),
+      promWrap,
+      h('div.row', h('a.btn.small', { href: '#/discover?sort=promising' }, 'More promising films'), h('a.btn.small', { href: '#/genres' }, 'Promising by genre'))));
+  }
   kids.push(h('section.section',
     h('h1.h-display', 'Start from'),
     h('div.doors',
@@ -184,7 +223,7 @@ async function homeView(live) {
       door('Director', 'Their filmography, minus your no-gos', () => focusSearch('director')),
       door('Film', 'Pick one and follow where it leads', () => focusSearch('film')),
       door('Country', `${nCountries} countries in your ratings`, () => go('/countries')),
-      door('Genre', 'Top rated, gems, newest', () => go('/genres')),
+      door('Genre', 'Promising first, then top rated', () => go('/genres')),
       door('Decade', '1920s to now', () => go('/decades')),
     )));
 
@@ -212,6 +251,16 @@ async function homeView(live) {
   if (!live()) return;
   view.replaceChildren(...kids);
   trailPush('Home', 'home');
+
+  if (canPromise) {
+    const st = { next: 0 }; let got = [];
+    while (got.filter(x => !x.ev.hide.length).length < 18 && !st.done && (st.examined || 0) < 260) {
+      got.push(...await walkTaste(st, { want: 18, maxExamine: 60 }));
+      if (!live()) return;
+    }
+    const vis = got.filter(x => !x.ev.hide.length).sort(byPromise).slice(0, 18);
+    promWrap.replaceChildren(...(vis.length ? vis.map(card) : [h('p.empty', 'Nothing in your taste list passes your rules yet.')]));
+  }
 }
 
 async function imdbJump(tt, live) {
@@ -272,6 +321,13 @@ async function titleView(type, id, live) {
       !ev.hide.length ? h('li.ok', 'Passes your hard rules') : null,
       ev.flags.map(x => h('li.flag', x)));
     const info = [...new Map(ev.veto.info.map(g => [g.key, g])).values()].slice(0, 5);
+    const t = tasteOf(f.imdb), tr = tier(t), td = tasteData();
+    if (!ev.rated) {
+      const line = !t ? h('li.info', 'No verdict: too few people with your taste have rated it.')
+        : tr.id === 'below' ? h('li.flag', `${tr.label}: the ${t.raters} people with taste like yours who rated it mostly scored it below your average.`)
+        : h('li' + (tr.id === 'mid' ? '.info' : '.good'), `${tr.label}: ranked in the top ${Math.max(1, Math.round(tr.pct * 100))}% of ${td.total.toLocaleString()} films, from ${t.raters} people with taste like yours.`);
+      items.push(h('h3', 'Your taste'), h('ul.vlist', line));
+    }
     items.push(h('h3', 'Your rules'), list);
     if (info.length) items.push(h('h3', 'Your data'), h('ul.vlist', info.map(g => h('li.info', `${g.label.replace(/^Your /, '')}: ${g.n} rated · ${g.n8} at 8+ · avg ${g.avg.toFixed(1)}`))));
     items.push(h('h3', 'Check before watching'), h('div.links',
@@ -323,8 +379,7 @@ async function titleView(type, id, live) {
   recWrap.replaceChildren(loading(`Checking ${raw.length} titles against your rules`));
   const checked = await check(raw, type);
   if (!live()) return;
-  const rank = (x) => weighted(x.f) - 0.35 * x.ev.flags.length - (x.ev.monkey ? 4 : 0);
-  checked.sort((a, b) => rank(b) - rank(a));
+  checked.sort(byPromise);
   const list = new ResultList({ showHidden: settings().showHidden, empty: 'Every recommendation here breaks one of your rules. Jump through the cast or director instead.' });
   list.add(checked);
   recWrap.replaceChildren(list.el);
@@ -352,7 +407,7 @@ async function personView(id, q, live) {
   const labels = { directing: 'Directing', acting: 'Acting', writing: 'Writing', series: 'Series' };
   let tab = q.get('as');
   if (!tab || !roles[tab]?.length) tab = p.known_for_department === 'Directing' && roles.directing.length ? 'directing' : roles.acting.length ? 'acting' : Object.keys(roles).find(k => roles[k].length) || 'acting';
-  let sort = 'best', obscure = false, limit = 60;
+  let sort = 'promising', obscure = false, limit = 60;
   const cache = new Map();
 
   const mine = personRatings(id, p.name);
@@ -379,7 +434,7 @@ async function personView(id, q, live) {
 
   const tabs = h('div.seg', { role: 'tablist' });
   const sortSel = h('select', { 'aria-label': 'Sort', onchange: (e) => { sort = e.target.value; draw(); } },
-    [['best', 'Best rated'], ['popular', 'Most popular'], ['newest', 'Newest'], ['oldest', 'Oldest']].map(([v, l]) => h('option', { value: v }, l)));
+    [['promising', 'Promising'], ['best', 'Best rated'], ['popular', 'Most popular'], ['newest', 'Newest'], ['oldest', 'Oldest']].map(([v, l]) => h('option', { value: v }, l)));
   const obsc = h('label', h('input', { type: 'checkbox', onchange: (e) => { obscure = e.target.checked; draw(); } }), 'Include obscure');
   const listWrap = h('div.section');
   const moreBtn = h('button.btn', { type: 'button', hidden: true, onclick: () => { limit += 60; draw(); } }, 'Check more titles');
@@ -399,7 +454,7 @@ async function personView(id, q, live) {
       newest: (a, b) => date(b).localeCompare(date(a)),
       oldest: (a, b) => (date(a) || '9999').localeCompare(date(b) || '9999'),
     };
-    items.sort(sorters[sort]);
+    items.sort(sorters[sort === 'promising' ? 'best' : sort]);
     const total = items.length;
     items = items.slice(0, limit);
     listWrap.replaceChildren(loading(`Checking ${items.length} titles against your rules`));
@@ -408,7 +463,9 @@ async function personView(id, q, live) {
     checked.forEach((c, i) => cache.set(todo[i].media_type + todo[i].id, c));
     if (my !== drawToken || !live()) return;
     const list = new ResultList({ showHidden: settings().showHidden, empty: `Nothing in this ${labels[tab].toLowerCase()} list passes your rules.` });
-    list.add(items.map(x => cache.get(x.media_type + x.id)).filter(Boolean));
+    const ordered = items.map(x => cache.get(x.media_type + x.id)).filter(Boolean);
+    if (sort === 'promising') ordered.sort(byPromise);
+    list.add(ordered);
     listWrap.replaceChildren(list.el);
     countEl.textContent = `${list.visibleCount} pass · ${total} with ${obscure ? 'any' : '40+'} votes`;
     moreBtn.hidden = total <= limit;
@@ -424,7 +481,7 @@ async function personView(id, q, live) {
 }
 
 // ---------------- Discover (country / genre / decade / keyword) ----------------
-const SORTS = [['top', 'Top rated'], ['gems', 'Hidden gems'], ['popular', 'Popular'], ['newest', 'Newest']];
+const SORTS = [['promising', 'Promising'], ['top', 'Top rated'], ['gems', 'Hidden gems'], ['popular', 'Popular'], ['newest', 'Newest']];
 let countryCache = null;
 async function allCountries() {
   if (!countryCache) countryCache = (await tmdb.countries()).map(c => [c.iso_3166_1, c.english_name]).sort((a, b) => a[1].localeCompare(b[1]));
@@ -434,7 +491,7 @@ async function allCountries() {
 async function discoverView(q, live) {
   const type = q.get('type') === 'tv' ? 'tv' : 'movie';
   const genre = q.get('genre') || '', country = q.get('country') || '', decade = q.get('decade') || '';
-  const sort = q.get('sort') || 'top', keyword = q.get('keyword') || '', kwname = q.get('kwname') || '';
+  const sort = q.get('sort') || 'promising', keyword = q.get('keyword') || '', kwname = q.get('kwname') || '';
   const state = { type, genre, country, decade, sort, keyword, kwname };
   const set = (patch) => go('/discover', { ...state, ...patch });
 
@@ -472,22 +529,43 @@ async function discoverView(q, live) {
   if (sort === 'gems') Object.assign(params, { sort_by: 'vote_average.desc', 'vote_count.gte': Math.round(80 * tvScale), 'vote_count.lte': Math.round(1500 * tvScale) });
   if (sort === 'popular') Object.assign(params, { sort_by: 'popularity.desc', 'vote_count.gte': 50 });
   if (sort === 'newest') Object.assign(params, { sort_by: df + '.desc', [df + '.lte']: today, 'vote_count.gte': 20 });
+  // Promising: walk the taste list for this slice; with a country or keyword (unknown offline), or once the
+  // taste list runs out, take TMDB's best-known titles in the slice and rank each page by the same key.
+  const promising = sort === 'promising';
+  if (promising) Object.assign(params, { sort_by: 'vote_count.desc', 'vote_count.gte': type === 'tv' ? 30 : 80 });
+  const gNames = genre ? imdbGenres([+genre]) : null;
+  const tasteState = { next: 0, done: !promising || !!country || !!keyword || type === 'tv' || !tasteData()?.total };
+  const tasteFilter = (t) => (!gNames || t.genres.some(g => gNames.includes(g))) && (!decade || (t.year >= +decade && t.year <= +decade + 9));
 
   const list = new ResultList({ showHidden: settings().showHidden, empty: 'Nothing on these pages passes your rules. Load more, or loosen a filter.' });
   const status = h('div.status', { hidden: true });
   const moreBtn = h('button.btn', { type: 'button', hidden: true }, 'Load more');
   const countEl = h('span.count');
+  const note = h('p.note');
   let page = 1, totalPages = 1, totalResults = 0;
 
   const loadMore = async () => {
-    moreBtn.hidden = true; status.hidden = false; status.replaceChildren(h('span.spin'), 'Fetching and checking');
+    moreBtn.hidden = true; status.hidden = false; status.replaceChildren(h('span.spin'), promising ? 'Ranking by your taste and checking your rules' : 'Fetching and checking');
+    if (!tasteState.done) {
+      const got = await walkTaste(tasteState, { filter: tasteFilter, match: (f) => f.type === type, want: 16, maxExamine: 120 });
+      if (!live()) return;
+      list.add(got);
+      status.hidden = true;
+      moreBtn.hidden = false;
+      countEl.textContent = `${list.visibleCount} pass · ranked by people with your taste`;
+      if (tasteState.done) note.textContent = 'Your taste data has no more titles here; "Load more" continues with the best-known titles, still ranked by your taste where possible.';
+      if (!list.items.length) list.emptyEl.textContent = 'None of the first matches pass your rules. Load more.';
+      return;
+    }
     let added = 0, tries = 0;
     while (tries < 3 && page <= totalPages) {
       const r = await tmdb.discover(type, { ...params, page });
       if (!live()) return;
       page++; tries++; totalPages = Math.min(r.total_pages || 1, 500); totalResults = r.total_results || 0;
       const before = list.visibleCount;
-      list.add(await check(r.results || [], type));
+      const batch = await check(r.results || [], type);
+      if (promising) batch.sort(byPromise);
+      list.add(batch);
       if (!live()) return;
       added += list.visibleCount - before;
       if (added >= 12) break;
@@ -504,7 +582,11 @@ async function discoverView(q, live) {
     h('h1.h-display', heading),
     statText ? h('div.mono.dim', statText) : null,
     controls),
-  h('section.section', h('header', h('h2.sec', SORTS.find(s => s[0] === sort)[1], countEl)), list.el, status, moreBtn));
+  h('section.section', h('header', h('h2.sec', SORTS.find(s => s[0] === sort)[1], countEl)),
+    promising ? h('p.note', country || keyword || type === 'tv'
+      ? 'Best-known titles in this slice, each page ordered by how people with your taste rated them.'
+      : 'Ordered by how people whose ratings resemble yours rated them, then checked against your rules.') : null,
+    list.el, status, note, moreBtn));
   trailPush(heading, 'discover');
   await loadMore();
 }
@@ -765,7 +847,7 @@ document.addEventListener('keydown', (e) => {
 window.addEventListener('hashchange', route);
 (async () => {
   view.replaceChildren(loading('Loading your ratings'));
-  await loadProfile();
+  await Promise.all([loadProfile(), loadTaste()]);
   onProfile(() => {
     const { path } = parseHash();
     if (['/', '/seeds', '/settings'].includes(path)) route();

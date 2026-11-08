@@ -2,6 +2,7 @@
 import { h } from './util.js';
 import { img } from './tmdb.js';
 import { summarizeHidden } from './rules.js';
+import { tasteOf, tier } from './taste.js';
 
 export const icons = {
   play: () => svg('<path d="M7 4.5v15l13-7.5z" fill="currentColor"/>'),
@@ -30,9 +31,11 @@ export function card({ f, ev }) {
   if (hidden) p.append(h('div.why', ev.hide[0].text));
   const meta = [f.type === 'tv' ? 'Series' : null, f.year, (f.countries || []).slice(0, 2).join('/'), f.vote ? '★ ' + f.vote.toFixed(1) : null].filter(Boolean);
   const nf = ev?.flags?.length || 0;
+  const tr = tier(tasteOf(f.imdb));
+  const match = tr && (tr.id === 'top' || tr.id === 'good') ? h('span.match', tr.id === 'top' ? 'Top match' : 'Good match') : null;
   return h('a.card' + (hidden ? '.is-hidden' : ''), { href: titleHref(f), title: f.title + (f.year ? ` (${f.year})` : '') },
     p, h('div.t', f.title),
-    h('div.m', meta.map(x => h('span', String(x))), nf ? h('span.fl', nf === 1 ? '1 flag' : nf + ' flags') : null));
+    h('div.m', meta.map(x => h('span', String(x))), match, nf ? h('span.fl', nf === 1 ? '1 flag' : nf + ' flags') : null));
 }
 
 // A grid of checked titles with a "N hidden by your rules · Show" bar. Supports appending pages.

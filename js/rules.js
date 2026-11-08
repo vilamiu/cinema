@@ -4,6 +4,7 @@
 // A "flag" only adds a warning badge.
 
 import { norm } from './util.js';
+import { tasteOf, tier } from './taste.js';
 
 // ---------- Do-not-suggest list (skill, 2026-10-24) ----------
 // [title, year, aliases?, tag?]  tag 'animal' = on the animal-suffering never list
@@ -182,6 +183,7 @@ export function evaluate(f, profile, verdicts, off = new Set(), ctx = {}) {
   if (f.year && f.year >= 2016 && C.size && [...C].every(c => c === 'US' || c === 'GB')) flags.push('Post-2015 US/UK: needs a specific reason to pass');
   const monkey = (f.directors || []).find(d => profile?.monkey.has(norm(d.name)) && norm(d.name) !== norm(ctx.personName || ''));
   if (monkey) flags.push(`More ${monkey.name}: you'd find this yourself`);
+  if (tier(tasteOf(f.imdb))?.id === 'below') flags.push('People with your taste rated it below your average');
 
   return { hide, flags, rated: rated || null, verdict: v || null, monkey: !!monkey, veto };
 }

@@ -6,6 +6,7 @@ A personal film explorer. Start from an actor, director, film, country, genre or
 
 ## What it does
 
+- **Promising:** the default order everywhere (home, genre/country/decade lists, filmographies, "More like this"). Scores in `data/taste.json` come from a user-based nearest-neighbour model on MovieTweetings: people whose IMDb ratings resemble mine, weighted by similarity. In a 5-fold backtest on my own ratings, about 62% of its top 10% were titles I rated 8+ (my base rate is 38%; ranking by crowd average gave about 54%). Everything it suggests still goes through the rules.
 - **Start anywhere:** search any person or title, or pick a country, genre or decade. Every name, country, genre, year and keyword on a page is a link, so one tap moves you on.
 - **Trail:** a film-strip bar under the header keeps every place visited this session. Tap any step to go back to it.
 - **Title pages:** poster, backdrop, embedded YouTube trailer (highest-resolution official trailer first, with a picker for the others), cast and crew, keywords, "More like this" from TMDB's recommendations and similar titles.
@@ -20,7 +21,7 @@ The site needs a free TMDB key (Settings → API on themoviedb.org). Paste it on
 ## Updating my ratings
 
 - Quick, per device: Settings → Import IMDb export (CSV).
-- For every device: replace `data/ratings.json` (built from the IMDb export plus the movies-database enrichment) and push.
+- For every device: replace `data/ratings.json` (built from the IMDb export plus the movies-database enrichment), rebuild `data/taste.json` from it, and push.
 
 ## Rules source
 
