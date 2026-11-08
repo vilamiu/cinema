@@ -191,6 +191,8 @@ async function route() {
     else if (path === '/genres') await genresView(q, live);
     else if (path === '/decades') await decadesView(q, live);
     else if (path === '/seeds') await seedsView(q, live);
+    else if (path === '/people') await peopleView(q, live);
+    else if (path === '/films') await filmsView(live);
     else if (path === '/saved') await savedView(q, live);
     else if (path === '/settings') await settingsView(live);
     else view.replaceChildren(h('p.empty', 'That page does not exist.'), h('a.btn', { href: '#/' }, 'Home'));
@@ -231,9 +233,9 @@ async function homeView(live) {
   kids.push(h('section.section',
     h('h1.h-display', 'Start from'),
     h('div.doors',
-      door('Actor', 'Everything they are in, filtered for you', () => focusSearch('actor')),
-      door('Director', 'Their filmography, minus your no-gos', () => focusSearch('director')),
-      door('Film', 'Pick one and follow where it leads', () => focusSearch('film')),
+      door('Actor', 'New faces from your best bets, and your favourites', () => go('/people', { role: 'actor' })),
+      door('Director', 'Directors you haven\'t tried yet, and your best', () => go('/people', { role: 'director' })),
+      door('Film', 'Your most promising films, or one you loved', () => go('/films')),
       door('Country', `${nCountries} countries in your ratings`, () => go('/countries')),
       door('Genre', 'Promising first, then top rated', () => go('/genres')),
       door('Decade', '1920s to now', () => go('/decades')),
@@ -265,14 +267,134 @@ async function homeView(live) {
   trailPush('Home', 'home');
 
   if (canPromise) {
-    const st = { next: 0 }; let got = [];
-    while (got.filter(x => !x.ev.hide.length).length < 18 && !st.done && (st.examined || 0) < 260) {
-      got.push(...await walkTaste(st, { want: 18, maxExamine: 60 }));
-      if (!live()) return;
-    }
-    const vis = got.filter(x => !x.ev.hide.length).sort(byPromise).slice(0, 18);
-    promWrap.replaceChildren(...(vis.length ? vis.map(card) : [h('p.empty', 'Nothing in your taste list passes your rules yet.')]));
+    const vis = await topPromising(18, 260, live);
+    if (!vis) return;
+    promWrap.replaceChildren(...(vis.length ? vis.slice(0, 18).map(card) : [h('p.empty', 'Nothing in your taste list passes your rules yet.')]));
   }
+}
+
+// The best-predicted titles that pass the rules (walks the taste list; results are cached per browser).
+async function topPromising(want, cap, live) {
+  const st = { next: 0 }; const got = [];
+  while (got.filter(x => !x.ev.hide.length).length < want && !st.done && (st.examined || 0) < cap) {
+    got.push(...await walkTaste(st, { want, maxExamine: 60 }));
+    if (!live()) return null;
+  }
+  return got.filter(x => !x.ev.hide.length).sort(byPromise);
+}
+
+// ---------------- Start pages: Actors / Directors / Films ----------------
+function inlineSearch({ placeholder, mode }) {
+  const results = h('div.section');
+  const input = h('input.filter-input.wide', { type: 'search', placeholder, 'aria-label': placeholder, autocomplete: 'off', enterkeyhint: 'search' });
+  let token = 0;
+  const run = debounce(async () => {
+    const s = input.value.trim(); const my = ++token;
+    if (s.length < 2) { results.replaceChildren(); return; }
+    results.replaceChildren(loading('Searching'));
+    try {
+      if (mode === 'film') {
+        const r = await tmdb.search(s);
+        const titles = r.results.filter(x => x.media_type === 'movie' || x.media_type === 'tv').slice(0, 18);
+        const checked = await check(titles, 'movie');
+        if (my !== token) return;
+        const list = new ResultList({ showHidden: true, empty: 'No films or series match.' });
+        list.add(checked);
+        results.replaceChildren(list.el);
+      } else {
+        const r = await tmdb.searchPeople(s);
+        if (my !== token) return;
+        const want = mode === 'director' ? 'Directing' : 'Acting';
+        const ppl = r.results.slice().sort((a, b) => (b.known_for_department === want) - (a.known_for_department === want)).slice(0, 18);
+        results.replaceChildren(ppl.length
+          ? h('div.grid.people', ppl.map(p => personCard(p, [p.known_for_department, (p.known_for || []).map(k => k.title || k.name).slice(0, 2).join(', ')].filter(Boolean).join(' · '), mode === 'director' ? 'directing' : 'acting')))
+          : h('p.empty', 'Nobody by that name on TMDB.'));
+      }
+    } catch (e) { if (my === token) results.replaceChildren(h('p.err', e.message)); }
+  }, 250);
+  input.addEventListener('input', run);
+  return h('div.section', input, results);
+}
+
+function peopleFromRatings(role) {
+  const m = new Map();
+  for (const e of getProfile().entries) {
+    const refs = role === 'director' ? (e.directorRefs || []) : (e.castRefs || []).slice(0, 3);
+    for (const p of refs) {
+      let g = m.get(p.id);
+      if (!g) m.set(p.id, g = { id: p.id, name: p.name, n: 0, sum: 0, n8: 0 });
+      g.n++; g.sum += e.rating; if (e.rating >= 8) g.n8++;
+    }
+  }
+  return [...m.values()].map(g => ({ ...g, avg: g.sum / g.n }));
+}
+
+async function withPhotos(people) {
+  const paths = await Promise.all(people.map(p => tmdb.api('/person/' + p.id).then(r => r.profile_path).catch(() => null)));
+  return people.map((p, i) => ({ ...p, profile_path: paths[i] }));
+}
+
+async function peopleView(q, live) {
+  const role = q.get('role') === 'director' ? 'director' : 'actor';
+  const as = role === 'director' ? 'directing' : 'acting';
+  const title = role === 'director' ? 'Directors' : 'Actors';
+  document.title = title + ' · Cinema';
+  const yours = peopleFromRatings(role).filter(g => g.n >= 2 && g.avg >= 7.5).sort((a, b) => b.n8 - a.n8 || b.avg - a.avg).slice(0, 24);
+  const yoursGrid = h('div.grid.people', yours.map(g => personCard(g, `avg ${g.avg.toFixed(1)} · ${g.n} rated`, as)));
+  const newWrap = h('div.section', loading('Reading your most promising films (first time takes a moment)'));
+  view.replaceChildren(
+    h('h1.h-display', title),
+    inlineSearch({ placeholder: role === 'director' ? 'Search a director' : 'Search an actor', mode: role }),
+    section('New to you', null, h('p.note', role === 'director'
+      ? 'Directors behind your most promising films, none of whose work you have rated.'
+      : 'Leads of your most promising films whom you have never rated.'), newWrap),
+    yours.length ? section(`Your best ${title.toLowerCase()}`, `${yours.length}`, h('p.note', 'From your ratings: average 7.5 or higher across 2 or more titles.'), yoursGrid) : null);
+  trailPush(title, 'pick');
+
+  withPhotos(yours).then(ps => { if (live()) yoursGrid.replaceChildren(...ps.map(g => personCard(g, `avg ${g.avg.toFixed(1)} · ${g.n} rated`, as))); });
+
+  if (!tasteData()?.total) { newWrap.replaceChildren(h('p.empty', 'No taste data loaded.')); return; }
+  const top = await topPromising(70, 240, live);
+  if (!top) return;
+  const known = new Set(getProfile().entries.flatMap(e => role === 'director' ? (e.directorRefs || []).map(d => d.id) : (e.castRefs || []).slice(0, 6).map(c => c.id)));
+  const agg = new Map();
+  for (const x of top) {
+    const ppl = role === 'director' ? x.f.directors : x.f.cast.slice(0, 3);
+    const t = tasteOf(x.f.imdb);
+    for (const p of ppl) {
+      if (known.has(p.id)) continue;
+      let g = agg.get(p.id);
+      if (!g) agg.set(p.id, g = { id: p.id, name: p.name, films: [], sum: 0 });
+      if (!g.films.includes(x.f.title)) { g.films.push(x.f.title); g.sum += t ? t.score : 0; }
+    }
+  }
+  const fresh = [...agg.values()].sort((a, b) => b.films.length - a.films.length || b.sum - a.sum).slice(0, 18);
+  const sub = (g) => g.films.slice(0, 2).join(', ') + (g.films.length > 2 ? ` +${g.films.length - 2}` : '');
+  if (!live()) return;
+  if (!fresh.length) { newWrap.replaceChildren(h('p.empty', 'Everyone behind your best bets is already in your ratings.')); return; }
+  newWrap.replaceChildren(h('div.grid.people', fresh.map(g => personCard(g, sub(g), as))));
+  const ps = await withPhotos(fresh);
+  if (live()) newWrap.replaceChildren(h('div.grid.people', ps.map(g => personCard(g, sub(g), as))));
+}
+
+async function filmsView(live) {
+  document.title = 'Films · Cinema';
+  const prof = getProfile();
+  const favs = prof.entries.filter(e => e.rating >= 9).sort((a, b) => b.rating - a.rating || String(b.date).localeCompare(String(a.date))).slice(0, 20);
+  const promWrap = h('div.section', loading('Finding your best bets'));
+  view.replaceChildren(
+    h('h1.h-display', 'Films'),
+    inlineSearch({ placeholder: 'Search a film or series', mode: 'film' }),
+    section('Most promising for you', null, h('p.note', 'Ranked by people whose ratings look like yours, then checked against your rules.'), promWrap,
+      h('div.row', h('a.btn.small', { href: '#/discover?sort=promising' }, 'Narrow by genre, country or decade'))),
+    favs.length ? section('Start from one you loved', null, h('div.rail', favs.map(seedCard)), h('div.row', h('a.btn.small', { href: '#/seeds?min=9' }, 'All your 9s and 10s'))) : null);
+  trailPush('Films', 'pick');
+  if (!tasteData()?.total) { promWrap.replaceChildren(h('p.empty', 'No taste data loaded.')); return; }
+  const top = await topPromising(24, 300, live);
+  if (!top) return;
+  const list = new ResultList({ showHidden: settings().showHidden, empty: 'Nothing in your taste list passes your rules yet.' });
+  list.add(top.slice(0, 24));
+  promWrap.replaceChildren(list.el);
 }
 
 async function imdbJump(tt, live) {

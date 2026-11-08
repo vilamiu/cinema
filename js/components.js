@@ -76,9 +76,9 @@ export class ResultList {
   }
 }
 
-export function personCard(p, sub) {
+export function personCard(p, sub, as) {
   const initials = (p.name || '?').split(/\s+/).map(s => s[0]).slice(0, 2).join('');
-  return h('a.person', { href: `#/person/${p.id}`, title: p.name },
+  return h('a.person', { href: `#/person/${p.id}${as ? '?as=' + as : ''}`, title: p.name },
     h('div.face', p.profile_path ? h('img', { src: img(p.profile_path, 'w185'), alt: '', loading: 'lazy', decoding: 'async' }) : h('div.noimg', initials)),
     h('div.n', p.name), sub ? h('div.r', sub) : null);
 }
