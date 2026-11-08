@@ -42,7 +42,7 @@ function build(base) {
   const appVerdicts = Object.values(store.get('verdicts', {})).filter(x => x.status === 'seen' && x.rating);
   for (const x of appVerdicts) {
     const old = x.imdb && entries.find(e => e.imdb === x.imdb);
-    if (old) { old.rating = x.rating; old.date = (x.at || '').slice(0, 10); old.fromApp = true; continue; }
+    if (old) { old.exportRating = old.rating; old.rating = x.rating; old.date = (x.at || '').slice(0, 10); old.fromApp = true; continue; }
     const f = store.get('f:' + x.type + ':' + x.id);
     entries.push({
       imdb: x.imdb || `tmdb:${x.type}:${x.id}`, title: x.title, year: x.year, rating: x.rating, date: (x.at || '').slice(0, 10), type: x.type,

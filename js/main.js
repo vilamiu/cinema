@@ -82,7 +82,14 @@ function go(path, params) {
 }
 
 // ---------------- scores waiting to be added on IMDb ----------------
-function pendingImdb() { return Object.values(verdicts()).filter(x => x.status === 'seen' && x.rating && !x.imdbDone); }
+function pendingImdb() {
+  const prof = getProfile();
+  const list = Object.values(verdicts()).filter(x => x.status === 'seen' && x.rating && !x.imdbDone);
+  // a score the latest IMDb export already shows is on IMDb: mark it done quietly
+  const onImdb = list.filter(x => x.imdb && prof?.byImdb.get(x.imdb)?.exportRating === x.rating);
+  onImdb.forEach(x => setVerdict(x, { imdbDone: true }));
+  return list.filter(x => !onImdb.includes(x));
+}
 function updatePendingBadge() {
   const a = document.querySelector('[data-nav="saved"]');
   if (!a) return;
@@ -220,8 +227,6 @@ async function homeView(live) {
   const kids = [];
   if (!hasKey()) kids.push(keyPanel());
   const nCountries = [...prof.groups.keys()].filter(k => k.startsWith('c:')).length;
-  const pend = pendingImdb();
-  if (pend.length) kids.push(h('a.panel.pendbar', { href: '#/saved?tab=seen' }, h('b', `${pend.length} score${pend.length > 1 ? 's' : ''} not on IMDb yet`), h('span.note', 'Finish them in Your list')));
   const canPromise = hasKey() && tasteData()?.total;
   const promWrap = h('div.rail', loading('Finding your best bets'));
   if (canPromise) {
