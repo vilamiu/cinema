@@ -367,8 +367,18 @@ function peopleFromRatings(role) {
 }
 
 async function withPhotos(people) {
-  const paths = await Promise.all(people.map(p => tmdb.api('/person/' + p.id).then(r => r.profile_path).catch(() => null)));
-  return people.map((p, i) => ({ ...p, profile_path: paths[i] }));
+  const info = await Promise.all(people.map(p => tmdb.api('/person/' + p.id).catch(() => ({}))));
+  return people.map((p, i) => ({ ...p, profile_path: info[i].profile_path || null, country: birthCountry(info[i].place_of_birth) }));
+}
+
+// Country from TMDB's place of birth, e.g. "Tokyo, Japan" -> "Japan"; "Tbilisi, Georgian SSR, USSR [now Georgia]" -> "Georgia".
+function birthCountry(place) {
+  if (!place) return '';
+  const now = place.match(/\[now ([^\]]+)\]/i);
+  let c = (now ? now[1] : place.replace(/\[[^\]]*\]/g, '')).split(',').pop().trim().replace(/\.$/, '');
+  if (/^(u\.?s\.?a?|united states( of america)?)$/i.test(c)) c = 'USA';
+  if (/^(u\.?k|united kingdom)$/i.test(c)) c = 'UK';
+  return c;
 }
 
 async function peopleView(q, live) {
@@ -411,7 +421,7 @@ async function peopleView(q, live) {
   if (!fresh.length) { newWrap.replaceChildren(h('p.empty', 'Everyone behind your best bets is already in your ratings.')); return; }
   newWrap.replaceChildren(h('div.grid.people', fresh.map(g => personCard(g, sub(g), as))));
   const ps = await withPhotos(fresh);
-  if (live()) newWrap.replaceChildren(h('div.grid.people', ps.map(g => personCard(g, sub(g), as))));
+  if (live()) newWrap.replaceChildren(h('div.grid.people', ps.map(g => personCard({ ...g, name: g.country ? `${g.name}, ${g.country}` : g.name }, sub(g), as))));
 }
 
 async function filmsView(live) {
